@@ -1,0 +1,19 @@
+{
+    "name": "phimtoico/tube-core",
+    "description": "Tube Core: foundation plugin — CPT, taxonomies, dedicated tables, migration runner, event dispatcher.",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": ">=8.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "Tube_Core\\": "includes/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tube_Core\\Tests\\": "tests/"
+        }
+    }
+}

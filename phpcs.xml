@@ -1,0 +1,98 @@
+<?xml version="1.0"?>
+<ruleset name="TubeSite">
+    <description>PSR-12 + WordPress Coding Standards for the Tube Site monorepo (PHP 8.3 only). See ARCHITECTURE.md §11.</description>
+
+    <arg value="sp"/>
+    <arg name="basepath" value="."/>
+    <arg name="colors"/>
+    <arg name="extensions" value="php"/>
+    <arg name="parallel" value="8"/>
+
+    <file>wp-content/plugins</file>
+    <file>wp-content/themes/tube-theme</file>
+
+    <exclude-pattern>*/vendor/*</exclude-pattern>
+    <exclude-pattern>*/node_modules/*</exclude-pattern>
+    <exclude-pattern>*/tests/*</exclude-pattern>
+
+    <config name="testVersion" value="8.3-"/>
+    <config name="minimum_supported_wp_version" value="6.5"/>
+
+    <!-- Formatting: PSR-12 governs layout (indentation, braces, line length, use-statement ordering). -->
+    <rule ref="PSR12"/>
+
+    <!-- WordPress-specific security/i18n/query conventions. -->
+    <rule ref="WordPress-Extra">
+        <!--
+            This project uses Composer PSR-4 autoloading with StudlyCaps
+            namespaced classes (ARCHITECTURE.md §11) instead of WPCS's
+            legacy `class-name-like-this.php` file-naming convention.
+        -->
+        <exclude name="WordPress.Files.FileName"/>
+
+        <!--
+            Empirically confirmed conflicts between WordPress-Extra's
+            traditional layout conventions and PSR-12 (verified by running
+            phpcs against the Phase 0 stub files, not assumed up front):
+            WordPress wants tab indentation and padded control-structure
+            parentheses; PSR-12 wants space indentation and unpadded ones.
+            Per ARCHITECTURE.md §11, PSR-12 governs layout/formatting, so
+            these specific WordPress layout sniffs are excluded in favor of
+            the PSR-12 rule already active above. Every other WordPress-Extra
+            sniff (escaping, i18n, DB query conventions, naming) is unaffected.
+        -->
+        <exclude name="Generic.WhiteSpace.DisallowSpaceIndent"/>
+        <exclude name="WordPress.WhiteSpace.ControlStructureSpacing.NoSpaceAfterOpenParenthesis"/>
+        <exclude name="WordPress.WhiteSpace.ControlStructureSpacing.NoSpaceBeforeCloseParenthesis"/>
+        <exclude name="PEAR.Functions.FunctionCallSignature.SpaceAfterOpenBracket"/>
+        <exclude name="PEAR.Functions.FunctionCallSignature.SpaceBeforeCloseBracket"/>
+
+        <!--
+            WordPress.WhiteSpace.OperatorSpacing is fully redundant with
+            PSR12.Operators.OperatorSpacing for general binary-operator
+            checks (confirmed empirically: both fire identically on
+            `$a=1;`), and is the specific source of an unresolvable
+            conflict on `if (!defined(...))` (WordPress wants a space
+            after "!", PSR-12 forbids a space after the opening
+            parenthesis it's adjacent to). PSR-12's sniff covers the same
+            ground without that conflict, so the WordPress one is excluded.
+        -->
+        <exclude name="WordPress.WhiteSpace.OperatorSpacing"/>
+    </rule>
+    <rule ref="WordPress-Docs"/>
+
+    <!-- Each tube-* plugin has its own prefix; enforce all of them project-wide. -->
+    <rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+        <properties>
+            <property name="prefixes" type="array">
+                <element value="tube_core"/>
+                <element value="TUBE_CORE"/>
+                <element value="Tube_Core"/>
+                <element value="tube_player"/>
+                <element value="TUBE_PLAYER"/>
+                <element value="Tube_Player"/>
+                <element value="tube_search"/>
+                <element value="TUBE_SEARCH"/>
+                <element value="Tube_Search"/>
+                <element value="tube_seo"/>
+                <element value="TUBE_SEO"/>
+                <element value="Tube_Seo"/>
+                <element value="tube_admin"/>
+                <element value="TUBE_ADMIN"/>
+                <element value="Tube_Admin"/>
+                <element value="tube_cache"/>
+                <element value="TUBE_CACHE"/>
+                <element value="Tube_Cache"/>
+            </property>
+        </properties>
+    </rule>
+
+    <!--
+        Custom tables (wp_tube_*) require direct $wpdb queries — a
+        documented, intentional exception per ARCHITECTURE.md §2/§7.
+        Enforced via inline `phpcs:ignore WordPress.DB.DirectDatabaseQuery`
+        comments at each call site (from Phase 1 onward) rather than a
+        blanket exclusion here, so every direct query still has to justify
+        itself in code review.
+    -->
+</ruleset>

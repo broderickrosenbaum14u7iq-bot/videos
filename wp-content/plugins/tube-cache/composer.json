@@ -1,0 +1,19 @@
+{
+    "name": "phimtoico/tube-cache",
+    "description": "Tube Cache: Redis/object cache, fragment/page cache, rate limiting, CDN edge-purge integration.",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": ">=8.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "Tube_Cache\\": "includes/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tube_Cache\\Tests\\": "tests/"
+        }
+    }
+}

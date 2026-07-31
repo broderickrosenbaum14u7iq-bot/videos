@@ -1,0 +1,112 @@
+name: tube-site-staging
+
+services:
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  wordpress:
+    image: wordpress:php8.3-fpm
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      WORDPRESS_DB_HOST: ${WORDPRESS_DB_HOST}
+      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME}
+      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+      WORDPRESS_DEBUG: 1
+      # WP-Cron is never used in this project (ARCHITECTURE.md §7) — every
+      # background task runs via Linux cron + WP-CLI (see the `cron` service
+      # below) instead of the HTTP pseudo-cron trigger.
+      WORDPRESS_CONFIG_EXTRA: |
+        define( 'DISABLE_WP_CRON', true );
+    volumes:
+      - wp-core-data:/var/www/html
+      - ./wp-content/plugins:/var/www/html/wp-content/plugins
+      - ./wp-content/themes:/var/www/html/wp-content/themes
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - wordpress
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    volumes:
+      - wp-core-data:/var/www/html:ro
+      - ./wp-content/plugins:/var/www/html/wp-content/plugins:ro
+      - ./wp-content/themes:/var/www/html/wp-content/themes:ro
+      - ./ops/docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+
+  wpcli:
+    image: wordpress:cli-php8.3
+    # Alpine's www-data (uid 82, this image) differs from Debian's www-data
+    # (uid 33, the wordpress:php8.3-fpm image) — a Docker-only cross-image
+    # UID mismatch, not a real production concern. Running as root here
+    # avoids spurious "wp-config.php is not writable" errors when wp-cli
+    # needs to touch files the wordpress/nginx containers created.
+    user: root
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      WORDPRESS_DB_HOST: ${WORDPRESS_DB_HOST}
+      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME}
+      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+    volumes:
+      - wp-core-data:/var/www/html
+      - ./wp-content/plugins:/var/www/html/wp-content/plugins
+      - ./wp-content/themes:/var/www/html/wp-content/themes
+    entrypoint: ["tail", "-f", "/dev/null"]
+
+  # Linux cron + WP-CLI sidecar. Never WP-Cron — see ARCHITECTURE.md §7 and
+  # ops/cron/staging.cron for the full job list (currently no-op placeholders,
+  # Phase 0 only).
+  cron:
+    build:
+      context: .
+      dockerfile: ops/docker/cron/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      WORDPRESS_DB_HOST: ${WORDPRESS_DB_HOST}
+      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME}
+      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+    volumes:
+      - wp-core-data:/var/www/html
+      - ./wp-content/plugins:/var/www/html/wp-content/plugins
+      - ./wp-content/themes:/var/www/html/wp-content/themes
+      - ./ops/cron/logs:/var/log/tube-cron
+
+volumes:
+  db-data:
+  wp-core-data:

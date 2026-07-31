@@ -1,0 +1,34 @@
+# Dependencies
+/**/vendor/
+/node_modules/
+
+# Local environment
+.env
+.env.*
+!.env.example
+docker-data/
+wp-cli-cache/
+
+# WordPress runtime files that don't belong in the repo
+wp-content/uploads/
+wp-content/upgrade/
+wp-content/cache/
+*.log
+
+# WordPress-core-bundled default plugins/themes. The wordpress:php8.3-fpm
+# container auto-copies these into any bind-mounted wp-content directory
+# on first boot — they are not part of this project (only the six tube-*
+# plugins and tube-theme are) and must never be committed.
+wp-content/plugins/akismet/
+wp-content/plugins/hello.php
+wp-content/plugins/index.php
+wp-content/themes/twentytwenty*/
+wp-content/themes/index.php
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# PHPCS cache
+.phpcs-cache
