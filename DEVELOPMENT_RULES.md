@@ -16,8 +16,8 @@ This file is the canonical, durable record of every process and quality rule gov
   6. Production-quality code only.
   
   Do not ask whether the architecture should change while implementing a phase. Assume it's correct. The only path to changing it is §8's ADR process, and only when implementation *proves* — not merely suggests — the frozen design is objectively insufficient; that should be rare, not a routine outcome of writing code.
-- Before starting a phase's new work, run the Architecture Drift Report (§6 below) against the codebase as it stands from prior phases — while the architecture is frozen this is a quick confirmation that nothing has silently drifted since the freeze, not an invitation to reopen design questions.
-- Finish a phase completely — including its tests, its documentation, an Implementation Review (§7 below) of every commit in it, and a Benchmark Report (§9 below) compared against the previous phase — before starting the next one.
+- Before starting a phase's new work, run the Architecture Drift Report (§6 below) against the codebase as it stands from prior phases — while the architecture is frozen this is a quick confirmation that nothing has silently drifted since the freeze, not an invitation to reopen design questions. Also check `adr/DEBT-*.md` (§10 below) for any open debt targeted at this phase for removal — paying it off is part of this phase's scope from the start, not an afterthought.
+- Finish a phase completely — including its tests, its documentation, an Implementation Review (§7 below) of every commit in it, a Benchmark Report (§9 below) compared against the previous phase, and a Technical Debt Budget of zero (§10 below) unless a Debt ADR is filed in the same commit — before starting the next one.
 - **Stop and wait for explicit user approval after every phase.** Do not begin the next phase on your own judgment that the previous one looks done.
 - Every phase produces a `PHASE-X.md` (e.g. `PHASE-0.md`, `PHASE-1.md`) documenting what was built and the verification evidence for it — not a summary of intent, actual evidence (command output, live checks).
 - If a phase needs a follow-up correction after its initial commit (e.g. an audit), document and commit that separately rather than silently amending history — see `PHASE-1-AUDIT.md` for the precedent.
@@ -117,7 +117,7 @@ Review these dimensions:
 - **Unnecessary hooks** — a WordPress action/filter registered that nothing needs, or that duplicates what another already-registered hook covers.
 - **Unnecessary abstractions** — an interface, wrapper, or indirection layer with no real payoff (apply §6.6's/§19.1's "realistic second implementation" test). New abstractions are already out of scope per §1's implementation-excellence rules; this is the check that one didn't sneak in anyway.
 
-**If a meaningful improvement is available, make it before committing.** This is not a report filed for later — it's a gate the commit does not pass until nothing meaningful is left to improve. Findings and what was changed as a result belong in that phase's `PHASE-X.md`.
+**If a meaningful improvement is available, make it before committing.** This is not a report filed for later — it's a gate the commit does not pass until nothing meaningful is left to improve. Findings and what was changed as a result belong in that phase's `PHASE-X.md`. If a finding genuinely can't be fixed within this phase (not "didn't get to it" — a real, considered tradeoff), it does not get committed silently either: file a Debt ADR per §10 in the same commit, or fix it. There is no third option.
 
 This step is not optional and is not skipped for any future commit, regardless of how small it seems.
 
@@ -172,7 +172,24 @@ A metric marked N/A is reported as N/A in `BENCHMARKS.md`, explicitly, with the 
 
 This step is not optional and is not skipped for any future phase, regardless of how small the phase seems.
 
-## 10. Session start checklist
+## 10. Technical Debt Budget — zero, by default, every phase
+
+**Every phase begins with a debt budget of zero. New technical debt is prohibited by default.** "Technical debt" here means any known, intentional gap between what was implemented and what genuinely production-quality implementation of that same piece of `ARCHITECTURE.md` would look like — a shortcut, a deferred edge case, a "good enough for now" implementation, a correctness gap accepted rather than fixed. This is not about code that's merely simple (simple and correct is the goal, not debt) — it's about anything the person writing it already knows isn't right and is choosing to ship anyway.
+
+The default path is: don't. Fix it before committing, the same as any other finding from the Implementation Review (§7). Most of what looks like a reason to accept debt is actually just unfinished work in the current commit, not a genuine tradeoff — exhaust that possibility first.
+
+**If a phase must genuinely, intentionally introduce debt, it requires a Debt ADR before the phase can be committed — no exceptions, the same "no exceptions" standard as §8's architecture-change ADRs.** Use `adr/DEBT-TEMPLATE.md`, filed as `adr/DEBT-NNNN-short-title.md` (its own sequential numbering, separate from architecture ADRs, so the two kinds of record are never ambiguous from the filename alone). A Debt ADR is a smaller, different instrument than an architecture-change ADR — it isn't proposing to change a frozen decision, it's disclosing a known implementation shortfall within the current, unchanged architecture — so it does not need §8's trigger condition, migration plan, or rollback plan. It must state:
+
+1. **Justification** — why this specific gap is being accepted now, concretely (not "ran out of time" as a bare excuse — what tradeoff was actually being made, against what).
+2. **Impact** — what this costs: correctness, performance, security, maintainability — named specifically, not hand-waved as "minor."
+3. **Removal plan** — the concrete fix, described precisely enough that a different engineer could execute it without re-deriving the reasoning from scratch.
+4. **Target removal phase** — a specific phase number, not "eventually" or "when we have time."
+
+A phase with a filed Debt ADR is committed with that ADR in the same commit — the debt is never left undocumented even for one commit. Log it in `ARCHITECTURE-CHANGELOG.md` the same way architecture changes are logged, tagged as debt so it's distinguishable at a glance from an actual architecture decision.
+
+**Enforcement loop — this is what makes "target removal phase" a real commitment, not a note nobody revisits:** per §1, before a phase's new work starts, check `adr/DEBT-*.md` for any open Debt ADR whose target removal phase is the one about to begin (or earlier — nothing should ever roll past its own target). Paying it off is part of that phase's scope, not optional extra credit. A target removal phase that arrives and doesn't pay off its assigned debt does not get committed as complete until it does, or until a new Debt ADR is filed explaining why the removal is being pushed further out — which should be rare, and is itself something worth surfacing to the user rather than doing silently.
+
+## 11. Session start checklist
 
 Every session, before writing or changing any code:
 
@@ -180,6 +197,7 @@ Every session, before writing or changing any code:
 2. Read this file, `DEVELOPMENT_RULES.md`, in full.
 3. Read `ARCHITECTURE_FREEZE.md` to know what's frozen, flexible, and deferred before proposing or implementing anything that touches architecture.
 4. Read the most recent `PHASE-X.md` (and any `PHASE-X-AUDIT.md`) to know what's already built and verified, and `BENCHMARKS.md`'s most recent section to know current performance baselines.
-5. Run `git log --oneline` and compare against what the phase docs claim — the committed state is the source of truth, not this conversation's memory of it.
+5. List `adr/DEBT-*.md` to know what technical debt is currently outstanding and which phase each is targeted for removal in.
+6. Run `git log --oneline` and compare against what the phase docs claim — the committed state is the source of truth, not this conversation's memory of it.
 
 Do not rely on conversational memory, session continuity, or any Claude memory feature for project rules or project state. If a rule matters beyond the current message, it belongs in this file or in `ARCHITECTURE.md` — not anywhere else.
