@@ -98,13 +98,37 @@ Check, at minimum:
 
 This step is not optional and is not skipped for any future commit, regardless of how small it seems.
 
-## 8. Session start checklist
+## 8. Architecture Freeze — change control after Phase 3 begins
+
+The architecture was formally frozen in `ARCHITECTURE_FREEZE.md` after two adversarial challenge passes (`ARCHITECTURE-OPTIMIZATION-REVIEW.md` and its predecessor) and before any Phase 3 code was written. Read that file for exactly what's frozen, what's intentionally left flexible, and what's deferred with an explicit trigger — this section is the enforcement rule, not the content.
+
+**After Phase 3 begins, architecture changes are prohibited unless:**
+
+- **a measurable benchmark proves the current design insufficient**,
+- **a production issue requires it**, or
+- **a new functional requirement makes it necessary**.
+
+"It seemed better" is not one of these. "A different senior architect might have chosen differently" is not one of these — `ARCHITECTURE_FREEZE.md` already documents, decision by decision, that this was anticipated and the choice was made anyway, for stated reasons. Revisiting a frozen decision requires one of the three conditions above to actually be true and demonstrated, not asserted.
+
+**Architecture changes after the freeze require, with no exceptions:**
+
+1. **An Architecture Decision Record (ADR)** — use `adr/TEMPLATE.md`, filed as `adr/NNNN-short-title.md` (sequential, zero-padded). Must state which frozen decision is changing, which of the three trigger conditions applies, and include the actual benchmark data / production incident / requirement it's responding to — not a restatement of preference.
+2. **A migration plan** — how existing data/code moves to the new design, and in what order, without a period where the system is in an inconsistent state.
+3. **A rollback plan** — how to undo the change if it doesn't work, mirroring the same rigor already required of every database migration's `down()`.
+4. **An impact analysis** — every phase, plugin, and already-shipped feature the change touches, checked explicitly, the same way every phase's Migration Impact Report already works.
+
+A change without all four is not a valid architecture change, regardless of how small it looks. Log the accepted ADR in `ARCHITECTURE-CHANGELOG.md` the same way every prior architecture change has been logged.
+
+This rule applies starting with Phase 3's first commit. It does not apply retroactively to anything already decided during Phases 0–2 or the two pre-freeze review passes — that work is exactly what's now frozen.
+
+## 9. Session start checklist
 
 Every session, before writing or changing any code:
 
-1. Read `ARCHITECTURE.md` in full (the approved architecture — currently Revision 5).
+1. Read `ARCHITECTURE.md` in full (the approved architecture — currently Revision 5, frozen per `ARCHITECTURE_FREEZE.md`).
 2. Read this file, `DEVELOPMENT_RULES.md`, in full.
-3. Read the most recent `PHASE-X.md` (and any `PHASE-X-AUDIT.md`) to know what's already built and verified.
-4. Run `git log --oneline` and compare against what the phase docs claim — the committed state is the source of truth, not this conversation's memory of it.
+3. Read `ARCHITECTURE_FREEZE.md` to know what's frozen, flexible, and deferred before proposing or implementing anything that touches architecture.
+4. Read the most recent `PHASE-X.md` (and any `PHASE-X-AUDIT.md`) to know what's already built and verified.
+5. Run `git log --oneline` and compare against what the phase docs claim — the committed state is the source of truth, not this conversation's memory of it.
 
 Do not rely on conversational memory, session continuity, or any Claude memory feature for project rules or project state. If a rule matters beyond the current message, it belongs in this file or in `ARCHITECTURE.md` — not anywhere else.
