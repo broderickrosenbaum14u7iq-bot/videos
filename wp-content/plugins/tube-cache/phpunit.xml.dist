@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache">
+    <!--
+        Unit suite only, same as tube-core: pure-logic tests with no
+        WordPress or live-Redis dependency (see tests/Unit). RedisCache
+        itself (the thin real Predis wrapper) is verified live against the
+        staging Redis container instead, the same "adapter untested by
+        PHPUnit, verified live" split already established for
+        WordPressHookBus in tube-core Phase 2 — see PHASE-3.md.
+    -->
+    <testsuites>
+        <testsuite name="unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory suffix=".php">includes</directory>
+        </include>
+    </source>
+</phpunit>

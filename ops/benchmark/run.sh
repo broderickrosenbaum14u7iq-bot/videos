@@ -51,8 +51,11 @@ echo "--- Page generation time: GET / (homepage) ---"
 time_request "Page /" "${BASE_URL}/"
 
 echo
-echo "--- Cache hits / misses ---"
-echo "N/A — no cache layer exists yet (tube-cache is Phase 3)."
+echo "--- Cache hits / misses (real Redis, tube-cache Plugin::cache()) ---"
+docker compose exec -T redis redis-cli CONFIG RESETSTAT > /dev/null
+docker compose exec -T wpcli wp eval-file ops/benchmark/cache-operations.php --allow-root
+echo "Redis INFO stats after the run above (keyspace_hits/keyspace_misses are the authoritative hit/miss counts):"
+docker compose exec -T redis redis-cli INFO stats | grep -E "keyspace_hits|keyspace_misses"
 
 echo
 echo "--- Import throughput ---"

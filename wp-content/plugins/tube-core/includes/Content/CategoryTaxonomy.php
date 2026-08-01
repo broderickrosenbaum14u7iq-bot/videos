@@ -41,7 +41,20 @@ final class CategoryTaxonomy
     /**
      * Build the registration arguments for the `video_category` taxonomy.
      *
-     * @return array<string, mixed>
+     * @return array{
+     *     labels: array<string, string>,
+     *     description: string,
+     *     hierarchical: bool,
+     *     public: bool,
+     *     publicly_queryable: bool,
+     *     show_ui: bool,
+     *     show_admin_column: bool,
+     *     show_in_nav_menus: bool,
+     *     show_in_rest: bool,
+     *     rest_base: string,
+     *     query_var: bool,
+     *     rewrite: array{slug: string, with_front: bool, hierarchical: bool},
+     * }
      */
     private function args(): array
     {

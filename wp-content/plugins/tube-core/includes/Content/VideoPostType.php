@@ -41,7 +41,29 @@ final class VideoPostType
     /**
      * Build the registration arguments for the `video` post type.
      *
-     * @return array<string, mixed>
+     * @return array{
+     *     labels: array<string, string>,
+     *     description: string,
+     *     public: bool,
+     *     publicly_queryable: bool,
+     *     show_ui: bool,
+     *     show_in_menu: bool,
+     *     show_in_nav_menus: bool,
+     *     show_in_admin_bar: bool,
+     *     show_in_rest: bool,
+     *     rest_base: string,
+     *     has_archive: bool,
+     *     supports: list<string>,
+     *     rewrite: array{slug: string, with_front: bool},
+     *     menu_icon: string,
+     *     menu_position: int,
+     *     capability_type: string,
+     *     map_meta_cap: bool,
+     *     hierarchical: bool,
+     *     query_var: bool,
+     *     can_export: bool,
+     *     delete_with_user: bool,
+     * }
      */
     private function args(): array
     {

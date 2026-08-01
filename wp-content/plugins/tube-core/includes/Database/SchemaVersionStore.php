@@ -30,6 +30,7 @@ final class SchemaVersionStore implements SchemaVersionRepositoryInterface
     public static function install(): void
     {
         global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
 
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
@@ -54,6 +55,7 @@ final class SchemaVersionStore implements SchemaVersionRepositoryInterface
     public static function table_name(): string
     {
         global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
 
         return $wpdb->prefix . 'tube_schema_versions';
     }
@@ -66,21 +68,26 @@ final class SchemaVersionStore implements SchemaVersionRepositoryInterface
     public function applied_versions(string $plugin_slug): array
     {
         global $wpdb;
-
-        $table = self::table_name();
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
         $rows = $wpdb->get_results(
             $wpdb->prepare(
-                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table identifier only, derived from $wpdb->prefix, never user input.
-                "SELECT version, applied_at FROM {$table} WHERE plugin_slug = %s ORDER BY version ASC",
+                'SELECT version, applied_at FROM %i WHERE plugin_slug = %s ORDER BY version ASC',
+                self::table_name(),
                 $plugin_slug
             ),
             ARRAY_A
         );
 
         $result = [];
-        $rows   = (array) $rows;
+
+        // wordpress-stubs types wpdb::get_results() as `array|object|null`
+        // regardless of the $output_type argument (it can't discriminate on
+        // a runtime constant) — the real shape below is exact given the
+        // fixed two-column SELECT and ARRAY_A above.
+        /** @var array<int, array{version: string, applied_at: string}> $rows */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+        $rows = (array) $rows;
 
         foreach ($rows as $row) {
             $result[ $row['version'] ] = $row['applied_at'];
@@ -98,6 +105,7 @@ final class SchemaVersionStore implements SchemaVersionRepositoryInterface
     public function record(string $plugin_slug, string $version): void
     {
         global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
         $wpdb->insert(
@@ -120,6 +128,7 @@ final class SchemaVersionStore implements SchemaVersionRepositoryInterface
     public function forget(string $plugin_slug, string $version): void
     {
         global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
         $wpdb->delete(

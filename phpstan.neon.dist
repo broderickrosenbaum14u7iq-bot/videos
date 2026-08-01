@@ -1,0 +1,35 @@
+includes:
+    - vendor/szepeviktor/phpstan-wordpress/extension.neon
+
+parameters:
+    level: max
+
+    # Same scan scope as phpcs.xml, for the same reason: this is a
+    # monorepo of independently-composer-installed plugins, so one root
+    # config covers all of them rather than duplicating one per plugin.
+    paths:
+        - wp-content/plugins
+        - wp-content/themes/tube-theme
+
+    excludePaths:
+        - */vendor/*
+        - wp-content/plugins/akismet/*
+        - wp-content/plugins/hello.php
+        - wp-content/plugins/index.php
+        - wp-content/themes/twentytwenty*/*
+        - wp-content/themes/index.php
+
+    # Each plugin is independently composer-installed (no shared root
+    # autoloader, ARCHITECTURE.md §4/§19.4's plugin-independence rule) —
+    # PHPStan needs every plugin's own autoloader listed here to resolve
+    # its classes. Add a line the phase a plugin first gets real PHP
+    # classes (a Phase 0 scaffold with only top-level constants doesn't
+    # need one yet). wp-cli-stubs is loaded the same way wordpress-stubs
+    # is loaded by szepeviktor/phpstan-wordpress itself (its own
+    # extension.neon bootstraps wordpress-stubs.php, not stubFiles) —
+    # `stubFiles` only refines types for symbols PHPStan already knows
+    # about, it doesn't introduce brand-new global classes/functions.
+    bootstrapFiles:
+        - vendor/php-stubs/wp-cli-stubs/wp-cli-stubs.php
+        - wp-content/plugins/tube-core/vendor/autoload.php
+        - wp-content/plugins/tube-cache/vendor/autoload.php

@@ -31,6 +31,7 @@ abstract class AbstractMigration implements MigrationInterface
     protected function db(): wpdb
     {
         global $wpdb;
+        /** @var wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
 
         return $wpdb;
     }
@@ -57,7 +58,7 @@ abstract class AbstractMigration implements MigrationInterface
     {
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
-        return dbDelta($sql);
+        return array_values(dbDelta($sql));
     }
 
     /**

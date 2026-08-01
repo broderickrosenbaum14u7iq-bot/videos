@@ -113,7 +113,7 @@ final class EventCatalog
     /**
      * Every known event name, for validating dispatch()/listen() calls against.
      *
-     * @return list<string>
+     * @return list<non-empty-string>
      */
     public static function all(): array
     {

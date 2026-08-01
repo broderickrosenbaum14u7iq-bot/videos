@@ -75,6 +75,8 @@ final class Dispatcher
      * @param string $event The event name to check.
      *
      * @throws InvalidArgumentException If $event is not in EventCatalog::all().
+     *
+     * @phpstan-assert non-empty-string $event
      */
     private function guard_known_event(string $event): void
     {
