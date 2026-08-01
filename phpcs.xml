@@ -13,7 +13,19 @@
 
     <exclude-pattern>*/vendor/*</exclude-pattern>
     <exclude-pattern>*/node_modules/*</exclude-pattern>
-    <exclude-pattern>*/tests/*</exclude-pattern>
+
+    <!--
+        WordPress-core-bundled default plugins/themes (see .gitignore):
+        not part of this project, and not committed, but the wordpress:
+        php8.3-fpm container re-copies them onto disk on every boot since
+        they're bind-mounted — exclude them from linting the same way
+        they're excluded from git.
+    -->
+    <exclude-pattern>*/wp-content/plugins/akismet/*</exclude-pattern>
+    <exclude-pattern>*/wp-content/plugins/hello.php</exclude-pattern>
+    <exclude-pattern>*/wp-content/plugins/index.php</exclude-pattern>
+    <exclude-pattern>*/wp-content/themes/twentytwenty*/*</exclude-pattern>
+    <exclude-pattern>*/wp-content/themes/index.php</exclude-pattern>
 
     <config name="testVersion" value="8.3-"/>
     <config name="minimum_supported_wp_version" value="6.5"/>
@@ -46,6 +58,19 @@
         <exclude name="WordPress.WhiteSpace.ControlStructureSpacing.NoSpaceBeforeCloseParenthesis"/>
         <exclude name="PEAR.Functions.FunctionCallSignature.SpaceAfterOpenBracket"/>
         <exclude name="PEAR.Functions.FunctionCallSignature.SpaceBeforeCloseBracket"/>
+
+        <!--
+            Empirically confirmed (Phase 1, first real classes): WordPress-
+            Extra pulls in K&R brace placement for classes/functions
+            (opening brace on the same line as the declaration), which
+            directly contradicts PSR-12 4.1/4.5, requiring Allman style
+            (brace on its own line) for classes and methods specifically
+            — PSR-12 uses K&R only for control structures, which is
+            already unaffected by this exclusion. Per §11, PSR-12 governs
+            layout, so these two WordPress sniffs are excluded.
+        -->
+        <exclude name="Generic.Classes.OpeningBraceSameLine"/>
+        <exclude name="Generic.Functions.OpeningFunctionBraceKernighanRitchie"/>
 
         <!--
             WordPress.WhiteSpace.OperatorSpacing is fully redundant with
@@ -95,4 +120,45 @@
         blanket exclusion here, so every direct query still has to justify
         itself in code review.
     -->
+
+    <!--
+        Empirically confirmed (Phase 1, first real methods/classes with
+        parameters): several sniffs transitively pulled in by PSR12/
+        WordPress-Extra's dependency chain (PHPCSExtra's "Universal"
+        collection, Squiz, PEAR) enforce a padded, legacy style that
+        contradicts both PSR-12's own tighter conventions and this
+        project's PHP-8.3-only, short-array-syntax-throughout style:
+        padding inside array brackets and function-declaration
+        parentheses, and long-form `array()` instead of `[]`. Per
+        ARCHITECTURE.md §11, PSR-12 governs layout; these are excluded in
+        favor of the tighter, unpadded style already used everywhere else
+        in this codebase (e.g. Phase 0's `if (!defined('ABSPATH'))`).
+    -->
+    <rule ref="Universal.Arrays.DisallowShortArraySyntax">
+        <severity>0</severity>
+    </rule>
+    <rule ref="NormalizedArrays.Arrays.ArrayBraceSpacing">
+        <severity>0</severity>
+    </rule>
+    <rule ref="Squiz.Functions.FunctionDeclarationArgumentSpacing">
+        <severity>0</severity>
+    </rule>
+    <rule ref="Generic.WhiteSpace.ArbitraryParenthesesSpacing">
+        <severity>0</severity>
+    </rule>
+
+    <!--
+        Deliberate project decision, not a formatting nit: PSR-1 (via the
+        PSR12 ruleset) mandates camelCase method names. This codebase is a
+        WordPress plugin suite whose methods constantly wrap and sit
+        alongside WordPress's own snake_case API
+        (register_post_type(), add_action(), register_taxonomy(), ...) —
+        camelCase methods calling into snake_case WP functions on every
+        other line would be a worse readability/consistency outcome than
+        the PSR-1 rule is meant to protect against. snake_case method
+        names are used consistently throughout this project instead.
+    -->
+    <rule ref="PSR1.Methods.CamelCapsMethodName">
+        <severity>0</severity>
+    </rule>
 </ruleset>

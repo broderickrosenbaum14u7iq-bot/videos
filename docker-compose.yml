@@ -1,5 +1,20 @@
 name: tube-site-staging
 
+x-wordpress-env: &wordpress-env
+  WORDPRESS_DB_HOST: ${WORDPRESS_DB_HOST}
+  WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME}
+  WORDPRESS_DB_USER: ${WORDPRESS_DB_USER}
+  WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+  # WP-Cron is never used in this project (ARCHITECTURE.md §7) — every
+  # background task runs via Linux cron + WP-CLI (see the `cron` service
+  # below) instead of the HTTP pseudo-cron trigger. Shared across every
+  # service that loads wp-config.php, so `wp-cli`/`cron` see the same
+  # config the live site does (previously only `wordpress` had this,
+  # which caused wp-cli to report DISABLE_WP_CRON as unset even though
+  # the live site had it correctly enabled).
+  WORDPRESS_CONFIG_EXTRA: |
+    define( 'DISABLE_WP_CRON', true );
+
 services:
   db:
     image: mariadb:11.4
@@ -35,16 +50,8 @@ services:
       redis:
         condition: service_healthy
     environment:
-      WORDPRESS_DB_HOST: ${WORDPRESS_DB_HOST}
-      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME}
-      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER}
-      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+      <<: *wordpress-env
       WORDPRESS_DEBUG: 1
-      # WP-Cron is never used in this project (ARCHITECTURE.md §7) — every
-      # background task runs via Linux cron + WP-CLI (see the `cron` service
-      # below) instead of the HTTP pseudo-cron trigger.
-      WORDPRESS_CONFIG_EXTRA: |
-        define( 'DISABLE_WP_CRON', true );
     volumes:
       - wp-core-data:/var/www/html
       - ./wp-content/plugins:/var/www/html/wp-content/plugins
@@ -75,10 +82,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      WORDPRESS_DB_HOST: ${WORDPRESS_DB_HOST}
-      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME}
-      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER}
-      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+      <<: *wordpress-env
     volumes:
       - wp-core-data:/var/www/html
       - ./wp-content/plugins:/var/www/html/wp-content/plugins
@@ -97,10 +101,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      WORDPRESS_DB_HOST: ${WORDPRESS_DB_HOST}
-      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME}
-      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER}
-      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+      <<: *wordpress-env
     volumes:
       - wp-core-data:/var/www/html
       - ./wp-content/plugins:/var/www/html/wp-content/plugins
