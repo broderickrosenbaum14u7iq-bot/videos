@@ -86,3 +86,35 @@ No `tube-cache` (Phase 3), no listeners registered by any other plugin yet (noth
 ## 8. Production impact
 
 None. All work happened in the local Docker staging environment, including the temporary debug listener used for live verification, which was removed before this phase was considered complete. Production was not accessed.
+
+---
+
+## 9. Architecture Regression Review
+
+Performed after Phase 2 was already committed (`b015af9`), at the user's request to establish this as a standing check before every future phase's commit — this review was done retroactively for Phase 2 specifically because it's the most recent phase; from Phase 3 onward it runs before the phase's commit, not after. Every file Phase 2 touched was re-read fresh for this pass rather than re-using the reasoning from when it was written, specifically to catch anything author-blindness might have missed the first time.
+
+**Result: clean. No code changes required.** Several borderline points were specifically considered and are recorded below with the reasoning, rather than passed over silently — that's the point of a review like this, not just a pass/fail stamp.
+
+### Violates ARCHITECTURE.md?
+No. Cross-checked §6's full event catalog against `EventCatalog::all()` — all 9 present, correctly attributed (Active vs. Reserved). One interpretive choice, already disclosed in §2 above and in code comments, re-confirmed here rather than re-litigated: `Dispatcher` is an instance class constructed via DI (`Plugin::events()`), not static, reading §6's `Dispatcher::dispatch(...)` notation as documentation shorthand rather than a literal static-call mandate — consistent with how Phase 1's `MigrationRunner::apply_pending()`-style shorthand was already interpreted the same way, without objection, in the Phase 1 audit.
+
+### Duplicates existing code?
+No new duplication. `VideoLifecycleEvents` reuses `VideoPostType::POST_TYPE` rather than restating the string `'video'`. Considered whether `Dispatcher::guard_known_event()` and `MigrationRunner`'s two `InvalidArgumentException`-throwing guards (unregistered plugin, unregistered version) should be extracted into a shared "validate against a known list" helper — decided against it: three call sites, each with a different exception message and different validation semantics, and PHP's own `in_array()` is already the shared primitive. Extracting a helper now would be an abstraction with no real payload behind it yet.
+
+### Increases coupling?
+No problematic increase. `VideoLifecycleEvents` depends on `VideoPostType` (necessary — it needs the post type constant to filter `transition_post_status`, which fires for every post type) and on `Dispatcher` (the whole point of the class). `Plugin.php` gained one new property and one new accessor, symmetric with the existing `migration_runner()` — not new coupling, the same composition-root pattern applied consistently. Worth watching, not acting on yet: `Plugin.php` will keep gaining one accessor per cross-cutting concern as later phases land (Phase 3's cache, Phase 6's search, etc.); it's still ~180 lines and each addition is a thin, symmetric accessor, so this isn't a real issue today, but it's the first place to look if a future phase's diff to this file stops being that simple.
+
+### Breaks dependency inversion?
+No. `Dispatcher` depends on `HookBusInterface`, never on `WordPressHookBus` directly, except at the one composition-root call site (`Plugin::events()`) where concrete wiring is supposed to happen. Considered whether `VideoLifecycleEvents` depending on the concrete `Dispatcher` class (no `DispatcherInterface`) is itself a DI violation — concluded no: `Dispatcher` is already the abstraction boundary over the real WordPress-coupled detail (`HookBusInterface`), and `VideoLifecycleEventsTest` already achieves full test isolation using a real `Dispatcher` plus a fake hook bus, so a second interface layer would have no test or runtime benefit — it would be abstraction for its own sake.
+
+### Introduces hidden technical debt?
+The one thing worth naming plainly: `VideoLifecycleEvents::register()` (the three real `add_action()` calls) has no automated regression test — a future edit that got an `$accepted_args` count wrong would only be caught by manual/live verification, not by `phpunit`. This is not a new gap Phase 2 introduced; it's the same, already-disclosed category of gap Phase 1 accepted for `VideoPostType`/`CategoryTaxonomy`/`TagTaxonomy`'s own registration methods (real WordPress-API calls, verified live rather than via `WP_UnitTestCase`, per Phase 1's explicit scoping decision). Phase 2 followed that same, already-agreed line rather than drawing a new one. The `VIDEO_UPDATED`/`VIDEO_PUBLISHED` co-firing-on-publish behavior is a second candidate for "hidden" debt, but it's disclosed prominently in `EVENTS.md` and §2 above, not hidden — a genuinely hidden version of this would be the same behavior with no documentation anywhere.
+
+### Reduces scalability?
+No. Every video save already triggers WordPress core's own unconditional `do_action('save_post', ...)` machinery regardless of tube-core; the incremental cost of tube-core's own dispatch (a 9-item `in_array` check plus one more `do_action` call) is negligible against that baseline, including at 500k-video import volume. The actual scale risk — a future listener doing slow synchronous work inside a handler — is a Phase 3+ concern, and `EVENTS.md`'s design notes already warn against it explicitly ("should queue that work for the Linux-cron/WP-CLI background job system... not do it synchronously") specifically to head that off before it happens.
+
+### Creates future migration problems?
+No. Phase 2 added no database schema, so there's nothing here for the migration-rollback machinery to interact with. The `tube_core.` event-name prefix and `EventCatalog`'s all-constants-in-one-file shape are both PHP-only and additive — renaming or adding an event later is a code change with no data migration implied, since no event name is ever persisted to the database.
+
+### Fixes applied as a result of this review
+None — see above. If a future phase's regression review finds something here, it gets fixed in that phase before its commit, following the same standard.
