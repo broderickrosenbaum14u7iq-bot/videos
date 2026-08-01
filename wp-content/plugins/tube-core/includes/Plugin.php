@@ -14,6 +14,9 @@ use Tube_Core\Content\CategoryTaxonomy;
 use Tube_Core\Content\TagTaxonomy;
 use Tube_Core\Content\VideoPostType;
 use Tube_Core\Database\SchemaVersionStore;
+use Tube_Core\Events\Dispatcher;
+use Tube_Core\Events\VideoLifecycleEvents;
+use Tube_Core\Events\WordPressHookBus;
 use Tube_Core\Migration\MigrationRunner;
 use Tube_Core\SchemaMigrations\Migration001CreateVideoMetadataTable;
 use Tube_Core\SchemaMigrations\Migration002CreateActorTables;
@@ -22,8 +25,8 @@ use Tube_Core\SchemaMigrations\Migration004AddActorStudioNameIndexes;
 use WP_CLI;
 
 /**
- * Tube Core's bootstrap: wires content registration and the migration
- * runner into WordPress.
+ * Tube Core's bootstrap: wires content registration, the event
+ * dispatcher, and the migration runner into WordPress.
  *
  * Content classes (VideoPostType, CategoryTaxonomy, TagTaxonomy) do not
  * hook themselves — they expose a single public registration method and
@@ -46,6 +49,13 @@ final class Plugin
      * @var MigrationRunner|null
      */
     private ?MigrationRunner $migration_runner = null;
+
+    /**
+     * Lazily created by self::events().
+     *
+     * @var Dispatcher|null
+     */
+    private ?Dispatcher $events = null;
 
     /**
      * Private: use self::instance() instead.
@@ -78,6 +88,8 @@ final class Plugin
         add_action('init', [$video_post_type, 'register_post_type']);
         add_action('init', [$category_taxonomy, 'register_taxonomy']);
         add_action('init', [$tag_taxonomy, 'register_taxonomy']);
+
+        (new VideoLifecycleEvents($this->events()))->register();
 
         $this->register_cli_commands();
     }
@@ -136,6 +148,23 @@ final class Plugin
         }
 
         return $this->migration_runner;
+    }
+
+    /**
+     * The event Dispatcher, backed by WordPress's action hook mechanism.
+     *
+     * Public so other tube-* plugins can dispatch or listen for events
+     * once they exist (from Phase 3 onward, per ARCHITECTURE.md §6),
+     * the same way self::migration_runner() is exposed for their
+     * migration sets.
+     */
+    public function events(): Dispatcher
+    {
+        if (null === $this->events) {
+            $this->events = new Dispatcher(new WordPressHookBus());
+        }
+
+        return $this->events;
     }
 
     /**
