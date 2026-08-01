@@ -15,9 +15,10 @@ use Tube_Core\Content\TagTaxonomy;
 use Tube_Core\Content\VideoPostType;
 use Tube_Core\Database\SchemaVersionStore;
 use Tube_Core\Migration\MigrationRunner;
-use Tube_Core\Migrations\Migration001CreateVideoMetadataTable;
-use Tube_Core\Migrations\Migration002CreateActorTables;
-use Tube_Core\Migrations\Migration003CreateStudioTables;
+use Tube_Core\SchemaMigrations\Migration001CreateVideoMetadataTable;
+use Tube_Core\SchemaMigrations\Migration002CreateActorTables;
+use Tube_Core\SchemaMigrations\Migration003CreateStudioTables;
+use Tube_Core\SchemaMigrations\Migration004AddActorStudioNameIndexes;
 use WP_CLI;
 
 /**
@@ -129,6 +130,7 @@ final class Plugin
                     Migration001CreateVideoMetadataTable::class,
                     Migration002CreateActorTables::class,
                     Migration003CreateStudioTables::class,
+                    Migration004AddActorStudioNameIndexes::class,
                 ]
             );
         }

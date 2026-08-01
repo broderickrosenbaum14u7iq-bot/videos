@@ -77,4 +77,22 @@ abstract class AbstractMigration implements MigrationInterface
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table identifier only, derived from $wpdb->prefix, never user input; identifiers cannot be bound via wpdb::prepare().
         $this->db()->query("DROP TABLE IF EXISTS {$table_name}");
     }
+
+    /**
+     * Drop a single index from a table.
+     *
+     * Used from down() methods that reverse an index-only change. Like
+     * drop_table(), dbDelta() has no equivalent — it only ever adds
+     * columns/indexes when diffing a CREATE TABLE statement, never
+     * removes them, so removing one is a direct query by necessity.
+     *
+     * @param string $table_name Full table name, including the site's table prefix.
+     * @param string $index_name The index to drop.
+     */
+    protected function drop_index(string $table_name, string $index_name): void
+    {
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.SchemaChange -- migration rollback; no dbDelta/WP_Query equivalent exists for dropping an index. See ARCHITECTURE.md §2.5, §3, §11.
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table/index identifiers only, derived from $wpdb->prefix and this migration's own literal index names, never user input; identifiers cannot be bound via wpdb::prepare().
+        $this->db()->query("ALTER TABLE {$table_name} DROP INDEX {$index_name}");
+    }
 }

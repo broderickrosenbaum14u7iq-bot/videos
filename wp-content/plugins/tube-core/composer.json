@@ -9,7 +9,7 @@
     "autoload": {
         "psr-4": {
             "Tube_Core\\": "includes/",
-            "Tube_Core\\Migrations\\": "migrations/"
+            "Tube_Core\\SchemaMigrations\\": "migrations/"
         }
     },
     "autoload-dev": {

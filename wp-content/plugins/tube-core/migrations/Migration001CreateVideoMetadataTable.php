@@ -7,7 +7,7 @@
 
 declare(strict_types=1);
 
-namespace Tube_Core\Migrations;
+namespace Tube_Core\SchemaMigrations;
 
 use Tube_Core\Migration\AbstractMigration;
 
