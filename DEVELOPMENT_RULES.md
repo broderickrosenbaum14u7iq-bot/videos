@@ -8,7 +8,7 @@ This file is the canonical, durable record of every process and quality rule gov
 
 - Implement **exactly one phase at a time**, exactly as defined in `ARCHITECTURE.md` §12 (Implementation Phases). Never skip a phase. Never implement multiple phases together, even partially.
 - Before starting a phase's new work, run the Architecture Drift Report (§6 below) against the codebase as it stands from prior phases.
-- Finish a phase completely — including its tests, its documentation, and its Architecture Regression Review (§5 below) — before starting the next one.
+- Finish a phase completely — including its tests, its documentation, its Architecture Regression Review (§5 below), and a Hostile Pre-Commit Review (§7 below) of every commit in it — before starting the next one.
 - **Stop and wait for explicit user approval after every phase.** Do not begin the next phase on your own judgment that the previous one looks done.
 - Every phase produces a `PHASE-X.md` (e.g. `PHASE-0.md`, `PHASE-1.md`) documenting what was built and the verification evidence for it — not a summary of intent, actual evidence (command output, live checks).
 - If a phase needs a follow-up correction after its initial commit (e.g. an audit), document and commit that separately rather than silently amending history — see `PHASE-1-AUDIT.md` for the precedent.
@@ -70,7 +70,32 @@ Verify, against the actual current code (re-read it fresh, don't reuse a prior s
 
 This step is not optional and is not skipped for any future phase, regardless of how small the phase seems.
 
-## 7. Session start checklist
+## 7. Hostile Pre-Commit Review — run before every commit
+
+§5 asks whether a change fits the architecture. §6 asks whether the accumulated codebase has drifted. This is different from both: **before every commit** (not just phase-completion commits — every commit, including small documentation or fix-up ones), review the actual diff as if it were written by another engineer you have no reason to trust, and whose commit you are inclined to reject. Do not soften findings to be encouraging. Do not stop at the first pass if a meaningful improvement is still available — keep going until there genuinely isn't one.
+
+Check, at minimum:
+
+- **Architecture violations** — does this diff contradict `ARCHITECTURE.md` or an already-adopted `DEVELOPMENT_RULES.md` decision?
+- **Unnecessary abstractions** — is there an interface, wrapper, or indirection layer with no real payoff (apply §6.6's "more than one implementation, or a real test-fake" test)?
+- **Over-engineering** — is there complexity (configurability, generality, defensive code) serving a need that doesn't exist yet?
+- **Under-engineering** — is there a corner cut here that will have to be redone properly later — something that won't hold up under real load, real concurrency, or an edge case this project is explicitly designed for (500,000+ videos, millions of pageviews)?
+- **Performance bottlenecks** — anything that will be slow at the scale this project targets, not just at today's near-empty data volume.
+- **N+1 queries** — any loop issuing one query per iteration where a single batched query would do.
+- **Race conditions** — any read-then-write, check-then-act, or shared-mutable-state sequence that isn't safe under concurrent requests. Matters especially for anything touching view counters, migration state, or cache.
+- **Cache issues** — stale-cache risk, missing invalidation, or a cache key that doesn't vary by every dimension it should.
+- **Event ordering issues** — any assumption that events fire in a particular order, or that one listener runs before/after another, that WordPress's hook system doesn't actually guarantee.
+- **Migration risks** — anything that could lock a large table longer than acceptable, or that's only safe against an empty table, not a populated one.
+- **Rollback risks** — does every migration's `down()` genuinely, exactly reverse its `up()` — re-checked here, not just assumed because §2 requires it.
+- **Security issues** — unescaped output, unprepared queries, missing capability/nonce checks, input trusted across a privilege boundary.
+- **Maintainability problems** — code a different engineer, or the same engineer a year from now, would struggle to safely change.
+- **Future scaling problems** — anything that works today but degrades non-linearly as videos, pageviews, plugins, or developers grow.
+
+**If a meaningful improvement is available, make it before committing.** This is not a report filed for later — it's a gate the commit does not pass until nothing meaningful is left to improve. Findings and what was changed as a result belong in that phase's `PHASE-X.md`, the same as §5 and §6.
+
+This step is not optional and is not skipped for any future commit, regardless of how small it seems.
+
+## 8. Session start checklist
 
 Every session, before writing or changing any code:
 
