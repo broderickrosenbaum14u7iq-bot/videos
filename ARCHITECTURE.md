@@ -1,12 +1,14 @@
-# Tube Site — Technical Architecture Document (Revision 4 — Final)
+# Tube Site — Technical Architecture Document (Revision 5)
 
-Status: **Approved.** Implementation is underway, phase by phase, exactly as defined in §12 below. This document is not changed to reflect implementation progress — for what's actually been built and verified, read the per-phase `PHASE-X.md` files (`PHASE-0.md`, `PHASE-1.md`, `PHASE-1-AUDIT.md`, `PHASE-2.md`, ...) and `git log`, not this file.
+Status: **Approved.** Implementation is underway, phase by phase, exactly as defined in §12 below. This document is not changed to reflect implementation progress — for what's actually been built and verified, read the per-phase `PHASE-X.md` files (`PHASE-0.md`, `PHASE-1.md`, `PHASE-1-AUDIT.md`, `PHASE-2.md`, ...) and `git log`, not this file. It *is* changed, deliberately and in full view, when a genuine architecture decision changes — see §19 and `ARCHITECTURE-CHANGELOG.md` for Revision 5's changes, made after Phases 0–2 were already implemented, without invalidating any of them (confirmed in `ARCHITECTURE-OPTIMIZATION-REVIEW.md`'s Migration Impact Report).
 
-**Before doing any implementation work, also read `DEVELOPMENT_RULES.md`** — process rules (one phase at a time, wait for approval, backward compatibility, the Architecture Regression Review required before every phase's commit, etc.) live there, not here, and are binding regardless of what any individual conversation does or doesn't recall. Sessions have no memory of prior conversations; both files are the source of truth, not this document's revision history or any chat transcript.
+**Before doing any implementation work, also read `DEVELOPMENT_RULES.md`** — process rules (one phase at a time, wait for approval, backward compatibility, the Architecture Regression Review, Architecture Drift Report, and Hostile Pre-Commit Review required around every phase, etc.) live there, not here, and are binding regardless of what any individual conversation does or doesn't recall. Sessions have no memory of prior conversations; both files are the source of truth, not this document's revision history or any chat transcript.
 
-This revision: eliminates `wp_postmeta` for video data entirely (dedicated `wp_tube_video_metadata` table), removes WP-Cron completely in favor of Linux cron + WP-CLI, adds a formal migration/rollback framework shared by every plugin, formalizes REST API versioning, adds an internal event system, adds a search indexing layer, adds an image management architecture, and locks the codebase to PHP 8.3 with `declare(strict_types=1)`, PSR-12, and WordPress Coding Standards.
+This revision (4): eliminates `wp_postmeta` for video data entirely (dedicated `wp_tube_video_metadata` table), removes WP-Cron completely in favor of Linux cron + WP-CLI, adds a formal migration/rollback framework shared by every plugin, formalizes REST API versioning, adds an internal event system, adds a search indexing layer, adds an image management architecture, and locks the codebase to PHP 8.3 with `declare(strict_types=1)`, PSR-12, and WordPress Coding Standards.
 
 Note: §14 revised the actor/studio design from taxonomies to dedicated tables (superseding earlier references to actor/studio taxonomies in §1); as-built table schemas were subsequently amended once more by the Phase 1 audit (a `name_idx` added via a later migration, not by editing §14's text) — see `PHASE-1-AUDIT.md`.
+
+Revision 5 (§19): a small number of decisions were sharpened after an explicit, adversarial re-challenge of the whole architecture — most notably, a previously-proposed generic service container was considered and **rejected** as unneeded complexity. Full reasoning in `ARCHITECTURE-OPTIMIZATION-REVIEW.md`; every accepted change is logged in `ARCHITECTURE-CHANGELOG.md`.
 
 ---
 
@@ -470,4 +472,28 @@ The `tube/v1` REST surface (§9) was designed plugin-by-plugin with clean data o
 
 ---
 
-This is the final architecture revision before implementation begins. Waiting for your sign-off before any code is written.
+## 19. Revision 5: post-approval optimization pass
+
+Made after Phases 0–2 were implemented and committed, in response to an explicit instruction to re-challenge the whole architecture — not just check it for consistency with itself — from the standpoint of building the fastest, cleanest, most maintainable large-scale WordPress application achievable. Full reasoning for every item below is in `ARCHITECTURE-OPTIMIZATION-REVIEW.md`; each is also logged in `ARCHITECTURE-CHANGELOG.md`. None of it invalidates Phases 0–2 (confirmed in that review's Migration Impact Report) — these are decisions for code not yet written.
+
+**§19.1 — Interface justification rule.** An interface is created only when it has a realistic second implementation — either a genuine competing implementation, or a test fake that will actually be built and used to unit-test real logic without a live WordPress/database/external-service dependency, the same pattern already proven by `HookBusInterface`/`WordPressHookBus`/`RecordingHookBus` and `SchemaVersionRepositoryInterface`/`SchemaVersionStore`/`InMemorySchemaVersionRepository`. "We might swap the vendor/library someday" is not sufficient on its own. This rule already existed implicitly (`DEVELOPMENT_RULES.md` §6.6); §19.4–§19.6 below are it applied to specific upcoming decisions.
+
+**§19.2 — Rejected: generic service container.** Considered, and explicitly not adopted. `Plugin.php` keeps hand-written, typed, lazy-singleton accessor methods (as `migration_runner()` and `events()` already are) rather than routing through a string- or class-keyed container. Reconsider only if a single plugin's bootstrap class exceeds roughly 6–8 such accessors, or starts containing real logic beyond construction/wiring — not before.
+
+**§19.3 — Database access consolidation.** `AbstractMigration` and `SchemaVersionStore` (and every future repository) share one `db(): wpdb` accessor instead of each independently calling `global $wpdb;` — fixes a confirmed, current duplication (5 independent occurrences in `SchemaVersionStore` alone). This is not read/write-replica infrastructure; §10's "once traffic requires it" framing for replicas is unchanged. Not yet implemented in code — applies from the next commit that touches a repository.
+
+**§19.4 — Repository convention.** A data-access class for a dedicated table is named `{Noun}Repository`, follows `SchemaVersionStore`'s shape. It gets a paired `{Noun}RepositoryInterface` only when §19.1's bar is cleared — not automatically for every table.
+
+**§19.5 — Cache and video-provider abstractions, re-justified.** `tube-cache`'s `CacheInterface` (Phase 3) and `tube-player`'s `VideoProviderInterface` (Phase 6) are both adopted, but on the basis of §19.1 (a test fake each plugin's dependents genuinely need), not vendor-swap speculation — that remains a real but secondary benefit.
+
+**§19.6 — Search backend, settled.** MySQL `FULLTEXT` + indexed taxonomy filtering is the committed first implementation for `tube-search` (§2.6, Phase 7) — no standing up Elasticsearch/OpenSearch before real query-pattern data justifies it. Whether the query layer sits behind an interface is left to Phase 7, under §19.1, not pre-decided here.
+
+**§19.7 — "Future microservice compatibility" clarified.** Means clean plugin boundaries (own data, communicate via documented APIs/events, no direct cross-plugin table access) that make extracting one concern easier *if ever needed* — not a mandate to build literal service/network boundaries now. This project is a WordPress plugin suite; treat it as one.
+
+**§19.8 — Bulk relationship-table writes.** Any code writing multiple rows to a relationship table (`wp_tube_video_actors`, `wp_tube_video_studios`, or any future equivalent) in response to one save uses a single multi-row `INSERT`, never a loop of single-row inserts. Applies starting Phase 7, when this code is first written — written down now so the naive loop is never the first draft.
+
+**§19.9 — Testing-architecture checkpoint.** Phase 1's decision to defer a full `WP_UnitTestCase` integration suite remains correct for now, but is no longer open-ended: it must be explicitly reconsidered before Phase 5 (import pipeline) or Phase 6 (`tube-player`), whichever comes first.
+
+---
+
+Phases 0–2 are implemented and committed. Revision 5 (§19) is approved and in effect. Further implementation continues phase by phase, per `DEVELOPMENT_RULES.md` — waiting for explicit approval before any new production code is written.
