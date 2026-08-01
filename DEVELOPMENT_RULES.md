@@ -7,8 +7,17 @@ This file is the canonical, durable record of every process and quality rule gov
 ## 1. Phase discipline
 
 - Implement **exactly one phase at a time**, exactly as defined in `ARCHITECTURE.md` §12 (Implementation Phases). Never skip a phase. Never implement multiple phases together, even partially.
-- Before starting a phase's new work, run the Architecture Drift Report (§6 below) against the codebase as it stands from prior phases.
-- Finish a phase completely — including its tests, its documentation, its Architecture Regression Review (§5 below), and a Hostile Pre-Commit Review (§7 below) of every commit in it — before starting the next one.
+- **The architecture is frozen (`ARCHITECTURE_FREEZE.md`). While it stays frozen, the job is implementation excellence, not architecture work.** For every phase:
+  1. Implement exactly what `ARCHITECTURE.md` specifies — no more, no less.
+  2. Do not redesign anything `ARCHITECTURE.md` already specifies.
+  3. Do not introduce new architectural patterns.
+  4. Do not introduce new abstractions beyond what `ARCHITECTURE.md` and this file already call for.
+  5. Do not expand a phase's scope beyond what §12 assigns it.
+  6. Production-quality code only.
+  
+  Do not ask whether the architecture should change while implementing a phase. Assume it's correct. The only path to changing it is §8's ADR process, and only when implementation *proves* — not merely suggests — the frozen design is objectively insufficient; that should be rare, not a routine outcome of writing code.
+- Before starting a phase's new work, run the Architecture Drift Report (§6 below) against the codebase as it stands from prior phases — while the architecture is frozen this is a quick confirmation that nothing has silently drifted since the freeze, not an invitation to reopen design questions.
+- Finish a phase completely — including its tests, its documentation, and an Implementation Review (§7 below) of every commit in it — before starting the next one.
 - **Stop and wait for explicit user approval after every phase.** Do not begin the next phase on your own judgment that the previous one looks done.
 - Every phase produces a `PHASE-X.md` (e.g. `PHASE-0.md`, `PHASE-1.md`) documenting what was built and the verification evidence for it — not a summary of intent, actual evidence (command output, live checks).
 - If a phase needs a follow-up correction after its initial commit (e.g. an audit), document and commit that separately rather than silently amending history — see `PHASE-1-AUDIT.md` for the precedent.
@@ -23,7 +32,7 @@ This file is the canonical, durable record of every process and quality rule gov
 - **No generic service container / no service locator.** Dependencies are constructor-injected or obtained via a plugin's own typed, hand-written accessor methods on its bootstrap class (e.g. `Plugin::migration_runner()`, `Plugin::events()`) — never a string- or class-keyed container `get()` call from arbitrary code. See `ARCHITECTURE.md` §19.2 for why this was explicitly considered and rejected, and the concrete trigger for reconsidering it.
 - **Bulk writes, not loops.** Code writing multiple rows to a relationship table in response to a single event/save uses one multi-row `INSERT`, never a loop of single-row inserts (`ARCHITECTURE.md` §19.8).
 - **PHP 8.3 only.** `declare(strict_types=1)` as the first statement in every PHP file. Full type declarations everywhere.
-- **Every change must pass `phpcs` (exit 0) and `phpunit` (all green) before it is committed.** Not "mostly passes" — zero errors, zero warnings, unless a warning is a deliberate, documented, justified exception.
+- **Every change must pass `phpcs` (exit 0), `phpunit` (all green), and static analysis before it is committed.** Not "mostly passes" — zero errors, zero warnings, unless a warning is a deliberate, documented, justified exception. Static analysis tool: PHPStan with WordPress stubs (`szepeviktor/phpstan-wordpress`), at a level chosen once it's set up (as a small dev-tooling task, not mid-phase) — this project's full type declarations and `strict_types=1` discipline should make a reasonably strict level (6+) achievable from the start rather than something to work up to.
 - **Keep backward compatibility with every previous phase.** After each phase's changes, verify live (reactivate the plugin in staging, re-run the previous phase's own checks) that nothing earlier broke — don't just assume additive changes are safe.
 - **Testing-architecture checkpoint.** The decision to defer a full `WP_UnitTestCase` integration suite (Phase 1) must be explicitly reconsidered before Phase 5 (import pipeline) or Phase 6 (`tube-player`), whichever comes first (`ARCHITECTURE.md` §19.9) — not left open-ended indefinitely.
 
@@ -38,7 +47,9 @@ This file is the canonical, durable record of every process and quality rule gov
 - Write commit messages that explain *why*, not just *what* — a future session with no memory of this conversation should be able to understand the reasoning from `git log` alone.
 - Never force-push, never amend a commit that's already been discussed as complete with the user.
 
-## 5. Architecture Regression Review — run before every phase's commit
+## 5. Architecture Regression Review — dormant while the architecture is frozen
+
+**While the architecture is frozen (`ARCHITECTURE_FREEZE.md`), this review does not run as a separate step.** Its concerns are folded into the Implementation Review (§7) as "does this match what `ARCHITECTURE.md` specifies," since asking "should the architecture change" is exactly what's now out of scope per §1 and `ARCHITECTURE_FREEZE.md`. This section stays on the books, unchanged, for the (expected to be rare) event that an ADR under §8 is actually underway — at that point, and only then, run it in full as originally written:
 
 Before committing any phase, review everything that phase introduced (re-reading the actual changed files fresh, not reusing reasoning from when they were written) and check whether it:
 
@@ -54,7 +65,9 @@ Before committing any phase, review everything that phase introduced (re-reading
 
 This step is not optional and is not skipped for any future phase, regardless of how small the phase seems.
 
-## 6. Architecture Drift Report — run before every phase begins
+## 6. Architecture Drift Report — reduced scope while the architecture is frozen
+
+**While the architecture is frozen, run this only as a quick confirmation-of-no-drift check before a phase begins** (per §1) — the 8 criteria below are still worth a fast pass to catch an accidental slip (e.g. a stray cross-plugin reference, a static property that shouldn't exist), but finding nothing is the expected, normal outcome, not a prompt to look harder for something to redesign. If it does find something, that's implementation drift to fix, not a reason to reconsider the frozen decision itself, unless it genuinely meets an §8 ADR trigger.
 
 Where §5 checks what a phase is about to *introduce*, right before committing it, this check runs at the opposite end: **before a phase's new work starts**, against the codebase exactly as prior phases left it. Its job is to catch structural drift that accumulates gradually across phases — the kind of thing no single phase's own regression review would flag, because each phase in isolation looked fine.
 
@@ -73,28 +86,38 @@ Verify, against the actual current code (re-read it fresh, don't reuse a prior s
 
 This step is not optional and is not skipped for any future phase, regardless of how small the phase seems.
 
-## 7. Hostile Pre-Commit Review — run before every commit
+## 7. Implementation Review — run before every commit
 
-§5 asks whether a change fits the architecture. §6 asks whether the accumulated codebase has drifted. This is different from both: **before every commit** (not just phase-completion commits — every commit, including small documentation or fix-up ones), review the actual diff as if it were written by another engineer you have no reason to trust, and whose commit you are inclined to reject. Do not soften findings to be encouraging. Do not stop at the first pass if a meaningful improvement is still available — keep going until there genuinely isn't one.
+While the architecture is frozen, this is the primary pre-commit gate — it supersedes §5 for routine work (folding "does this match `ARCHITECTURE.md`" into Correctness below) and narrows §6 to a quick drift check, per §1. **This review does not ask whether the architecture should change.** It asks whether the code sitting in front of you is genuinely production-ready implementation of the architecture as already specified.
 
-Check, at minimum:
+**Before every commit** (not just phase-completion commits — every commit, including small documentation or fix-up ones), review the actual diff as if it were written by another engineer you have no reason to trust, and whose commit you are inclined to reject. Do not soften findings to be encouraging. Do not stop at the first pass if a meaningful improvement is still available — keep going until there genuinely isn't one.
 
-- **Architecture violations** — does this diff contradict `ARCHITECTURE.md` or an already-adopted `DEVELOPMENT_RULES.md` decision?
-- **Unnecessary abstractions** — is there an interface, wrapper, or indirection layer with no real payoff (apply §6.6's "more than one implementation, or a real test-fake" test)?
-- **Over-engineering** — is there complexity (configurability, generality, defensive code) serving a need that doesn't exist yet?
-- **Under-engineering** — is there a corner cut here that will have to be redone properly later — something that won't hold up under real load, real concurrency, or an edge case this project is explicitly designed for (500,000+ videos, millions of pageviews)?
-- **Performance bottlenecks** — anything that will be slow at the scale this project targets, not just at today's near-empty data volume.
-- **N+1 queries** — any loop issuing one query per iteration where a single batched query would do.
+Review these dimensions:
+
+- **Correctness** — does this do what `ARCHITECTURE.md` specifies, exactly, and does it do what it claims to do for every input it will realistically see, not just the happy path?
+- **Readability** — would another engineer understand this without needing you to explain it?
+- **Maintainability** — code a different engineer, or the same engineer a year from now, would struggle to safely change.
+- **Performance** — anything that will be slow at the scale this project targets (500,000+ videos, millions of pageviews), not just at today's near-empty data volume.
+- **Security** — unescaped output, unprepared queries, missing capability/nonce checks, input trusted across a privilege boundary.
+- **Testability** — is the code structured so its real logic *can* be unit-tested against a fake (per §2's interface-justification rule), not just whether a test happens to exist.
+- **Memory usage** — anything materializing more data in memory at once than it needs to (e.g. loading a full result set to process one row at a time).
+- **Database queries** — every query reviewed for: **N+1 queries** (a loop issuing one query per iteration where a single batched query would do), **missing indexes** (an added query's `WHERE`/`JOIN`/`ORDER BY` actually covered by an existing index, not assumed), no `SELECT *`, no unbounded result sets, no query that could be batched or cached instead.
+- **Cache usage** — correct invalidation for every dimension a cache key should vary by, no stale-read risk, no cache-stampede risk on a hot key, and no unnecessary **cache misses** from an overly-specific key or a cache check placed after the expensive work it should have skipped.
+- **REST API correctness** — correct nonce/capability checks, correct HTTP methods/status codes, response shape matches what's documented, respects the `/tube/v1` additive-only versioning rule (`ARCHITECTURE.md` §9, frozen per `ARCHITECTURE_FREEZE.md`).
+- **WordPress Coding Standards / PSR-12** — `phpcs` exit 0 is necessary but not sufficient; read the diff for anything the linter can't catch (e.g. a WPCS-compliant but semantically wrong escaping function for the context).
+- **PHPUnit** — not just "tests pass," but whether the tests added actually exercise the real risk in this change, not just the trivially-true path.
+- **Static analysis** — `phpstan` clean at the project's configured level once that tooling exists (§2); until then, apply the same scrutiny manually (type-safety, unreachable code, always-true/false conditions).
 - **Race conditions** — any read-then-write, check-then-act, or shared-mutable-state sequence that isn't safe under concurrent requests. Matters especially for anything touching view counters, migration state, or cache.
-- **Cache issues** — stale-cache risk, missing invalidation, or a cache key that doesn't vary by every dimension it should.
-- **Event ordering issues** — any assumption that events fire in a particular order, or that one listener runs before/after another, that WordPress's hook system doesn't actually guarantee.
-- **Migration risks** — anything that could lock a large table longer than acceptable, or that's only safe against an empty table, not a populated one.
-- **Rollback risks** — does every migration's `down()` genuinely, exactly reverse its `up()` — re-checked here, not just assumed because §2 requires it.
-- **Security issues** — unescaped output, unprepared queries, missing capability/nonce checks, input trusted across a privilege boundary.
-- **Maintainability problems** — code a different engineer, or the same engineer a year from now, would struggle to safely change.
-- **Future scaling problems** — anything that works today but degrades non-linearly as videos, pageviews, plugins, or developers grow.
+- **Migration and rollback risk** — anything that could lock a large table longer than acceptable, or is only safe against an empty table not a populated one; does every migration's `down()` genuinely, exactly reverse its `up()`.
+- **Event ordering** — any assumption that events fire in a particular order, or that one listener runs before/after another, that WordPress's hook system doesn't actually guarantee.
+- **Duplicated code** — logic copy-pasted instead of reused from where it already exists.
+- **Dead code** — unused methods, properties, imports, or branches that can never execute.
+- **Unnecessary SQL** — a query that isn't needed at all (data already in hand, or derivable without hitting the database).
+- **Unnecessary object/allocation overhead** — objects or arrays constructed and immediately discarded, or rebuilt on every call where a plugin-lifetime cache would do.
+- **Unnecessary hooks** — a WordPress action/filter registered that nothing needs, or that duplicates what another already-registered hook covers.
+- **Unnecessary abstractions** — an interface, wrapper, or indirection layer with no real payoff (apply §6.6's/§19.1's "realistic second implementation" test). New abstractions are already out of scope per §1's implementation-excellence rules; this is the check that one didn't sneak in anyway.
 
-**If a meaningful improvement is available, make it before committing.** This is not a report filed for later — it's a gate the commit does not pass until nothing meaningful is left to improve. Findings and what was changed as a result belong in that phase's `PHASE-X.md`, the same as §5 and §6.
+**If a meaningful improvement is available, make it before committing.** This is not a report filed for later — it's a gate the commit does not pass until nothing meaningful is left to improve. Findings and what was changed as a result belong in that phase's `PHASE-X.md`.
 
 This step is not optional and is not skipped for any future commit, regardless of how small it seems.
 
@@ -109,6 +132,8 @@ The architecture was formally frozen in `ARCHITECTURE_FREEZE.md` after two adver
 - **a new functional requirement makes it necessary**.
 
 "It seemed better" is not one of these. "A different senior architect might have chosen differently" is not one of these — `ARCHITECTURE_FREEZE.md` already documents, decision by decision, that this was anticipated and the choice was made anyway, for stated reasons. Revisiting a frozen decision requires one of the three conditions above to actually be true and demonstrated, not asserted.
+
+**The default during implementation is to keep implementing, not to look for reasons to write an ADR.** An ADR is justified only when implementation *proves* — with an actual benchmark, an actual production incident, or an actual functional requirement that can't be met otherwise — that a frozen decision is objectively insufficient. A frozen decision feeling awkward, verbose, or not how you'd have built it today is not proof of anything and is not grounds to stop and propose a change; finish the implementation as specified.
 
 **Architecture changes after the freeze require, with no exceptions:**
 
