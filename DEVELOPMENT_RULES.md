@@ -7,6 +7,7 @@ This file is the canonical, durable record of every process and quality rule gov
 ## 1. Phase discipline
 
 - Implement **exactly one phase at a time**, exactly as defined in `ARCHITECTURE.md` §12 (Implementation Phases). Never skip a phase. Never implement multiple phases together, even partially.
+- Before starting a phase's new work, run the Architecture Drift Report (§6 below) against the codebase as it stands from prior phases.
 - Finish a phase completely — including its tests, its documentation, and its Architecture Regression Review (§5 below) — before starting the next one.
 - **Stop and wait for explicit user approval after every phase.** Do not begin the next phase on your own judgment that the previous one looks done.
 - Every phase produces a `PHASE-X.md` (e.g. `PHASE-0.md`, `PHASE-1.md`) documenting what was built and the verification evidence for it — not a summary of intent, actual evidence (command output, live checks).
@@ -50,7 +51,26 @@ Before committing any phase, review everything that phase introduced (re-reading
 
 This step is not optional and is not skipped for any future phase, regardless of how small the phase seems.
 
-## 6. Session start checklist
+## 6. Architecture Drift Report — run before every phase begins
+
+Where §5 checks what a phase is about to *introduce*, right before committing it, this check runs at the opposite end: **before a phase's new work starts**, against the codebase exactly as prior phases left it. Its job is to catch structural drift that accumulates gradually across phases — the kind of thing no single phase's own regression review would flag, because each phase in isolation looked fine.
+
+Verify, against the actual current code (re-read it fresh, don't reuse a prior session's assessment):
+
+1. **No circular dependencies.** No plugin may depend on another plugin that (directly or transitively) depends back on it — `tube-core` in particular must never depend on `tube-player`/`tube-search`/`tube-seo`/`tube-admin`/`tube-cache`. Within a plugin, no two classes may depend on each other.
+2. **No service locator pattern.** Classes receive their dependencies through their constructor. `Plugin::instance()->migration_runner()` / `->events()` are the *composition root* — the one place concrete wiring is expected — calling them from `tube-core.php` or from `Plugin` itself is correct. A different class reaching into `Plugin::instance()->something()` from inside its own unrelated logic, instead of having that dependency injected, is the anti-pattern this rule exists to catch.
+3. **No hidden singleton growth.** `Plugin::$instance` is the one deliberate, reviewed singleton (the composition root). Any *other* class quietly growing static state (a static cache, a static registry, a `private static` property outside `Plugin`) without that being an explicit, documented architectural decision is a violation.
+4. **No God classes.** No single class accumulating unrelated responsibilities. `Plugin.php` is the known watch point (flagged in the Phase 2 regression review) — each phase that adds another accessor to it should keep those accessors thin and symmetric (construct-or-return-cached, nothing more); if `Plugin.php` starts containing real logic instead of wiring, that's the signal to extract.
+5. **No duplicated abstractions.** Two different mechanisms solving the same problem (e.g. two different "validate against a known list and throw" implementations) should be one. A small amount of structurally-similar code at a handful of call sites is not automatically a duplicated abstraction — judge whether extracting a shared helper would reduce real complexity or just add a layer of indirection over three lines of code.
+6. **No unnecessary interfaces.** Every interface in the codebase (`MigrationInterface`, `SchemaVersionRepositoryInterface`, `HookBusInterface`, ...) must have a real payoff: either more than one real implementation, or a concrete test-fake that's actually used to unit-test something WordPress/database-coupled without WordPress loaded. An interface with exactly one implementation and no test benefit is speculative and should be inlined back into a concrete class.
+7. **No premature optimization.** No caching layer, index, denormalization, or complex data structure that isn't justified by an actual requirement already written in `ARCHITECTURE.md` or a concrete, present need. (The Phase 1 audit's `name_idx` addition is the model for what *is* justified: it was required by an explicit, already-approved architecture requirement, not spec work done "just in case.")
+8. **No violation of plugin boundaries.** No plugin queries another plugin's database tables directly, calls another plugin's internal (non-public) classes, or reaches past another plugin's documented public API. Every plugin's `composer.json` remains independently installable — no plugin's `composer.json` requires another plugin's package.
+
+**If this report finds anything, refactor it before continuing with the phase's new work** — the phase does not proceed on top of known drift. Include the report as a dedicated section in that phase's `PHASE-X.md`, with an actual finding for each of the eight criteria (not a bare pass/fail), the same way §5's report works.
+
+This step is not optional and is not skipped for any future phase, regardless of how small the phase seems.
+
+## 7. Session start checklist
 
 Every session, before writing or changing any code:
 
