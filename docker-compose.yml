@@ -87,6 +87,7 @@ services:
       - wp-core-data:/var/www/html
       - ./wp-content/plugins:/var/www/html/wp-content/plugins
       - ./wp-content/themes:/var/www/html/wp-content/themes
+      - ./ops/benchmark:/var/www/html/ops/benchmark:ro
     entrypoint: ["tail", "-f", "/dev/null"]
 
   # Linux cron + WP-CLI sidecar. Never WP-Cron — see ARCHITECTURE.md §7 and

@@ -17,7 +17,7 @@ This file is the canonical, durable record of every process and quality rule gov
   
   Do not ask whether the architecture should change while implementing a phase. Assume it's correct. The only path to changing it is §8's ADR process, and only when implementation *proves* — not merely suggests — the frozen design is objectively insufficient; that should be rare, not a routine outcome of writing code.
 - Before starting a phase's new work, run the Architecture Drift Report (§6 below) against the codebase as it stands from prior phases — while the architecture is frozen this is a quick confirmation that nothing has silently drifted since the freeze, not an invitation to reopen design questions.
-- Finish a phase completely — including its tests, its documentation, and an Implementation Review (§7 below) of every commit in it — before starting the next one.
+- Finish a phase completely — including its tests, its documentation, an Implementation Review (§7 below) of every commit in it, and a Benchmark Report (§9 below) compared against the previous phase — before starting the next one.
 - **Stop and wait for explicit user approval after every phase.** Do not begin the next phase on your own judgment that the previous one looks done.
 - Every phase produces a `PHASE-X.md` (e.g. `PHASE-0.md`, `PHASE-1.md`) documenting what was built and the verification evidence for it — not a summary of intent, actual evidence (command output, live checks).
 - If a phase needs a follow-up correction after its initial commit (e.g. an audit), document and commit that separately rather than silently amending history — see `PHASE-1-AUDIT.md` for the precedent.
@@ -146,14 +146,40 @@ A change without all four is not a valid architecture change, regardless of how 
 
 This rule applies starting with Phase 3's first commit. It does not apply retroactively to anything already decided during Phases 0–2 or the two pre-freeze review passes — that work is exactly what's now frozen.
 
-## 9. Session start checklist
+## 9. Benchmark Report — generate after every phase, before committing
+
+**Never assume. Measure.** After a phase's implementation is otherwise complete — code written, Implementation Review (§7) passed, tests green — and before that phase's commit, run `ops/benchmark/run.sh` against the live staging environment and record the results as a new dated section in `BENCHMARKS.md` (append-only, same pattern as `ARCHITECTURE-CHANGELOG.md` — never edit a prior phase's numbers, only add a new section). Compare every metric against the immediately preceding phase's section in the same file.
+
+**If a metric regressed, fix it before committing that phase.** "Regressed" means measurably worse, not just a different number — a 3% timing jitter between runs is noise, not a regression; re-run before concluding either way. If a regression is real and cannot be fixed without touching frozen architecture, that itself may be grounds for an §8 ADR (a measurable benchmark proving the current design insufficient is exactly one of the three permitted triggers) — but exhaust implementation-level fixes first, since most regressions are a bug in the new code, not evidence the architecture is wrong.
+
+Metrics and how each is actually measured (not estimated) in this project's Docker staging environment:
+
+| Metric | How it's measured | Status as of Phase 2 |
+|---|---|---|
+| PHP memory usage | `memory_get_peak_usage(true)` around a defined benchmark operation, via `wp eval` | Measurable now |
+| Execution time | `microtime(true)` before/after the same operation, or wall-clock via `time` around the `wp` invocation | Measurable now |
+| SQL query count | `SAVEQUERIES` enabled, `$wpdb->num_queries` read after the operation | Measurable now |
+| Cache hits | Redis `INFO stats` → `keyspace_hits`, or the object-cache backend's own hit counter | N/A — no cache layer exists yet (Phase 3) |
+| Cache misses | Redis `INFO stats` → `keyspace_misses` | N/A — same as above |
+| REST latency | `curl -w "%{time_total}"` against a real endpoint | Measurable now only against core `/wp-json/wp/v2/videos`; `tube/v1` custom endpoints don't exist yet (Phase 5+) |
+| Page generation time | `curl -w "%{time_total}"` against a real rendered URL (e.g. `/watch/{slug}/`) | Measurable now against the Phase 1 fallback template; a real theme doesn't exist yet (Phase 8) |
+| Import throughput | Items processed per second/minute by the WP-CLI batch worker, timed directly | N/A — import pipeline doesn't exist yet (Phase 5) |
+| Event dispatch cost | Microbenchmark: dispatch a real cataloged event through the real `Dispatcher`/`WordPressHookBus` N times, average the total | Measurable now |
+
+A metric marked N/A is reported as N/A in `BENCHMARKS.md`, explicitly, with the reason — never silently omitted, and never filled in with a guess. As each subsystem is built, its row turns from N/A into a real, comparable number starting with that phase's report.
+
+`ops/benchmark/run.sh` lives outside every plugin's own codebase (alongside `ops/cron/` and `ops/docker/`) deliberately — it's operational tooling for measuring the system, not part of any plugin's shipped architecture, so building and extending it doesn't conflict with §1's "no new abstractions/patterns beyond what `ARCHITECTURE.md` specifies" rule for phase implementation.
+
+This step is not optional and is not skipped for any future phase, regardless of how small the phase seems.
+
+## 10. Session start checklist
 
 Every session, before writing or changing any code:
 
 1. Read `ARCHITECTURE.md` in full (the approved architecture — currently Revision 5, frozen per `ARCHITECTURE_FREEZE.md`).
 2. Read this file, `DEVELOPMENT_RULES.md`, in full.
 3. Read `ARCHITECTURE_FREEZE.md` to know what's frozen, flexible, and deferred before proposing or implementing anything that touches architecture.
-4. Read the most recent `PHASE-X.md` (and any `PHASE-X-AUDIT.md`) to know what's already built and verified.
+4. Read the most recent `PHASE-X.md` (and any `PHASE-X-AUDIT.md`) to know what's already built and verified, and `BENCHMARKS.md`'s most recent section to know current performance baselines.
 5. Run `git log --oneline` and compare against what the phase docs claim — the committed state is the source of truth, not this conversation's memory of it.
 
 Do not rely on conversational memory, session continuity, or any Claude memory feature for project rules or project state. If a rule matters beyond the current message, it belongs in this file or in `ARCHITECTURE.md` — not anywhere else.
