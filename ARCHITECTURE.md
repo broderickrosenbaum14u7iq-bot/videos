@@ -1,8 +1,12 @@
 # Tube Site — Technical Architecture Document (Revision 4 — Final)
 
-Status: **DRAFT — final revision, awaiting sign-off. No code written yet.**
+Status: **Approved.** Implementation is underway, phase by phase, exactly as defined in §12 below. This document is not changed to reflect implementation progress — for what's actually been built and verified, read the per-phase `PHASE-X.md` files (`PHASE-0.md`, `PHASE-1.md`, `PHASE-1-AUDIT.md`, `PHASE-2.md`, ...) and `git log`, not this file.
+
+**Before doing any implementation work, also read `DEVELOPMENT_RULES.md`** — process rules (one phase at a time, wait for approval, backward compatibility, the Architecture Regression Review required before every phase's commit, etc.) live there, not here, and are binding regardless of what any individual conversation does or doesn't recall. Sessions have no memory of prior conversations; both files are the source of truth, not this document's revision history or any chat transcript.
 
 This revision: eliminates `wp_postmeta` for video data entirely (dedicated `wp_tube_video_metadata` table), removes WP-Cron completely in favor of Linux cron + WP-CLI, adds a formal migration/rollback framework shared by every plugin, formalizes REST API versioning, adds an internal event system, adds a search indexing layer, adds an image management architecture, and locks the codebase to PHP 8.3 with `declare(strict_types=1)`, PSR-12, and WordPress Coding Standards.
+
+Note: §14 revised the actor/studio design from taxonomies to dedicated tables (superseding earlier references to actor/studio taxonomies in §1); as-built table schemas were subsequently amended once more by the Phase 1 audit (a `name_idx` added via a later migration, not by editing §14's text) — see `PHASE-1-AUDIT.md`.
 
 ---
 
