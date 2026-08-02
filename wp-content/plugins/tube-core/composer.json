@@ -4,7 +4,8 @@
     "type": "wordpress-plugin",
     "license": "GPL-2.0-or-later",
     "require": {
-        "php": ">=8.3"
+        "php": ">=8.3",
+        "predis/predis": "^2.3"
     },
     "autoload": {
         "psr-4": {

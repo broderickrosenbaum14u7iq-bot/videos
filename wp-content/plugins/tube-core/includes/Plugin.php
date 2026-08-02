@@ -9,7 +9,9 @@ declare(strict_types=1);
 
 namespace Tube_Core;
 
+use Predis\Client;
 use Tube_Core\CLI\MigrateCommand;
+use Tube_Core\CLI\ViewsCommand;
 use Tube_Core\Content\CategoryTaxonomy;
 use Tube_Core\Content\TagTaxonomy;
 use Tube_Core\Content\VideoPostType;
@@ -22,6 +24,16 @@ use Tube_Core\SchemaMigrations\Migration001CreateVideoMetadataTable;
 use Tube_Core\SchemaMigrations\Migration002CreateActorTables;
 use Tube_Core\SchemaMigrations\Migration003CreateStudioTables;
 use Tube_Core\SchemaMigrations\Migration004AddActorStudioNameIndexes;
+use Tube_Core\SchemaMigrations\Migration005CreateVideoViewsTable;
+use Tube_Core\SchemaMigrations\Migration006CreateVideoStatisticsTable;
+use Tube_Core\Views\RedisViewCounter;
+use Tube_Core\Views\Repositories\VideoStatisticsRepository;
+use Tube_Core\Views\Repositories\VideoViewsRepository;
+use Tube_Core\Views\Retention;
+use Tube_Core\Views\StatsRollup;
+use Tube_Core\Views\ViewCounterInterface;
+use Tube_Core\Views\ViewRecorder;
+use Tube_Core\Views\ViewsFlusher;
 use WP_CLI;
 
 /**
@@ -56,6 +68,20 @@ final class Plugin
      * @var Dispatcher|null
      */
     private ?Dispatcher $events = null;
+
+    /**
+     * Lazily created by self::view_counter().
+     *
+     * @var ViewCounterInterface|null
+     */
+    private ?ViewCounterInterface $view_counter = null;
+
+    /**
+     * Lazily created by self::view_recorder().
+     *
+     * @var ViewRecorder|null
+     */
+    private ?ViewRecorder $view_recorder = null;
 
     /**
      * Private: use self::instance() instead.
@@ -143,6 +169,8 @@ final class Plugin
                     Migration002CreateActorTables::class,
                     Migration003CreateStudioTables::class,
                     Migration004AddActorStudioNameIndexes::class,
+                    Migration005CreateVideoViewsTable::class,
+                    Migration006CreateVideoStatisticsTable::class,
                 ]
             );
         }
@@ -168,7 +196,54 @@ final class Plugin
     }
 
     /**
-     * Register `wp tube migrate` when running under WP-CLI.
+     * The Redis-buffered view counter, per ARCHITECTURE.md §12 Phase 4.
+     *
+     * Not exposed to other plugins the way self::events()/
+     * self::migration_runner() are — nothing outside tube-core needs to
+     * touch the buffer directly; self::view_recorder() is the public
+     * entry point a future consumer (a REST controller, tube-player)
+     * calls instead.
+     */
+    private function view_counter(): ViewCounterInterface
+    {
+        if (null === $this->view_counter) {
+            $host = defined('TUBE_CORE_REDIS_HOST') ? TUBE_CORE_REDIS_HOST : '127.0.0.1';
+            $port = defined('TUBE_CORE_REDIS_PORT') ? TUBE_CORE_REDIS_PORT : 6379;
+
+            $this->view_counter = new RedisViewCounter(
+                new Client(
+                    [
+                        'host' => $host,
+                        'port' => $port,
+                    ]
+                )
+            );
+        }
+
+        return $this->view_counter;
+    }
+
+    /**
+     * Records a view (buffers it, dispatches VIDEO_VIEW_RECORDED), per
+     * ARCHITECTURE.md §12 Phase 4.
+     *
+     * Public so a future consumer (a REST controller, tube-player) can
+     * call `Plugin::instance()->view_recorder()->record($video_id)` —
+     * the same "public accessor for a cross-cutting concern" shape as
+     * self::events()/self::migration_runner().
+     */
+    public function view_recorder(): ViewRecorder
+    {
+        if (null === $this->view_recorder) {
+            $this->view_recorder = new ViewRecorder($this->view_counter(), $this->events());
+        }
+
+        return $this->view_recorder;
+    }
+
+    /**
+     * Register `wp tube migrate` and `wp tube-core views:flush`/
+     * `stats:rollup`/`views:partition-maintenance` when running under WP-CLI.
      */
     private function register_cli_commands(): void
     {
@@ -177,5 +252,21 @@ final class Plugin
         }
 
         WP_CLI::add_command('tube migrate', new MigrateCommand($this->migration_runner()));
+
+        $views_repository      = new VideoViewsRepository();
+        $statistics_repository = new VideoStatisticsRepository();
+
+        $views_command = new ViewsCommand(
+            new ViewsFlusher($this->view_counter(), $views_repository, $statistics_repository),
+            new StatsRollup($views_repository, $statistics_repository, $this->events()),
+            new Retention($views_repository)
+        );
+
+        // Registered as three individually-named commands, not one class
+        // with WP-CLI's usual space-separated subcommands — see
+        // ViewsCommand's own docblock for why.
+        WP_CLI::add_command('tube-core views:flush', [$views_command, 'flush']);
+        WP_CLI::add_command('tube-core stats:rollup', [$views_command, 'rollup']);
+        WP_CLI::add_command('tube-core views:partition-maintenance', [$views_command, 'partition_maintenance']);
     }
 }

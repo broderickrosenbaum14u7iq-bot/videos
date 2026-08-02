@@ -28,14 +28,14 @@ namespace Tube_Core\Events;
  * `TUBE_CORE_*` constants, `Tube_Core\*` classes).
  *
  * Not every event listed here has a real dispatch call site yet: the four
- * `video.*` lifecycle events are wired to real WordPress hooks in this
- * phase (see VideoLifecycleEvents), since the `video` CPT they react to
- * already exists. The other five depend on triggers that don't exist
- * until later phases (view tracking and stats rollup: Phase 4; the
- * import queue and the Cloudflare Stream webhook: Phase 5) — they are
- * still valid, listenable event names today (a plugin built ahead of its
- * trigger phase can register a listener without error), they simply
- * won't fire until their owning phase adds the dispatch call site.
+ * `video.*` lifecycle events (Phase 2, see VideoLifecycleEvents) and the
+ * two view-tracking events (Phase 4, see ViewRecorder/StatsRollup) are
+ * wired to real triggers. The remaining three depend on triggers that
+ * don't exist until Phase 5 (the import queue and the Cloudflare Stream
+ * webhook) — they are still valid, listenable event names today (a
+ * plugin built ahead of its trigger phase can register a listener
+ * without error), they simply won't fire until their owning phase adds
+ * the dispatch call site.
  */
 final class EventCatalog
 {
@@ -78,8 +78,8 @@ final class EventCatalog
     public const VIDEO_STREAM_STATUS_CHANGED = 'tube_core.video.stream_status_changed';
 
     /**
-     * Reserved for Phase 4: fired when a view is recorded. Internal
-     * only per ARCHITECTURE.md §6 — the stats rollup job reads
+     * Fired when a view is recorded (Tube_Core\Views\ViewRecorder).
+     * Internal only per ARCHITECTURE.md §6 — the stats rollup job reads
      * wp_tube_video_views directly rather than subscribing to this.
      *
      * Payload: `['video_id' => int]`.
@@ -87,8 +87,9 @@ final class EventCatalog
     public const VIDEO_VIEW_RECORDED = 'tube_core.video.view_recorded';
 
     /**
-     * Reserved for Phase 4: fired at the end of the stats rollup
-     * WP-CLI job.
+     * Fired once per video at the end of the `stats:rollup` WP-CLI job
+     * (Tube_Core\Views\StatsRollup), for every video with a statistics
+     * row — including ones with zero recent views.
      *
      * Payload: `['video_id' => int, 'views_total' => int]`.
      */

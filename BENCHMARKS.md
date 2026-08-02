@@ -59,3 +59,27 @@ Phase 2's own `BENCHMARKS.md` entry predicted exactly this: *"a large jump here 
 ### PHP memory, explained
 
 The **+2.0 MB** peak-memory increase (49.313 → 51.313 MB) on an operation tube-cache doesn't touch is Predis's own class footprint being autoloaded into the same PHP-FPM worker now that `tube-cache` is an active plugin with a real `vendor/autoload.php` — expected, proportionate (Predis is a substantial library), and not specific to `MigrationRunner::status()` itself, which is why the query count and execution time for that same operation are unchanged.
+
+---
+
+## Phase 4 (tube-core: video_views/video_statistics)
+
+Measured 2026-08-02 against the local Docker staging environment, stack already warm, immediately after Phase 4's Implementation Review and before its commit. Three consecutive runs of `ops/benchmark/run.sh`, same methodology as Phases 2–3.
+
+No new benchmark script this phase — unlike Phase 3 (which added `cache-operations.php` to fill in the previously-N/A cache hits/misses row), Phase 4 doesn't turn any of the 9 tracked metrics from N/A into measurable; the same three existing scripts already cover everything in scope. `views:flush`/`stats:rollup`/`views:partition-maintenance`'s own cost is not one of the 9 tracked metrics and was verified functionally correct (§6 of `PHASE-4.md`) rather than benchmarked — nothing in `DEVELOPMENT_RULES.md` §9's table calls for a dedicated row for it, and adding one un-asked-for would be exactly the kind of scope creep this phase's "keep implementation simple" instruction rules out.
+
+| Metric | Result | Notes |
+|---|---|---|
+| PHP memory usage | **51.313 MB** peak, identical across all 3 runs | Same operation as Phases 2–3 (`MigrationRunner::status()`) — **unchanged from Phase 3**. Predis is now also a tube-core dependency (for `RedisViewCounter`), but this benchmark's operation never touches `Tube_Core\Views\*`, so PHP's lazy autoloading never loads those classes here — expected, not a coincidence |
+| Execution time | **0.745–1.128 ms** | Same range as Phase 3's 0.538–0.915 ms — unaffected, as expected |
+| SQL query count | **1 query**, identical across all 3 runs | Unchanged — this operation doesn't touch the two new tables |
+| Cache hits | **1,000** (Redis `INFO stats` → `keyspace_hits`) | Unchanged methodology and result from Phase 3 — tube-core's Redis usage (`tube_core:view_buffer`) is a separate key namespace `cache-operations.php` never touches, so this row still measures only `tube-cache`'s traffic |
+| Cache misses | **1,000** (Redis `INFO stats` → `keyspace_misses`) | Same as above |
+| REST latency | **9.08–13.90 ms** | Consistent with Phase 3's steady-state 8.96–10.26 ms range (no cold-start outlier this run — the stack was already warm going in) |
+| Page generation time | **6.34–8.32 ms** (`/watch/test-video-one/`), **6.69–7.78 ms** (`/`) | Consistent with Phase 3's ranges — unaffected, as expected: no theme or template code touches the Views feature yet |
+| Import throughput | N/A | Still no import pipeline (Phase 5) |
+| Event dispatch cost | **29.06–30.17 ms total for 1,000 dispatches** (≈0.029–0.030 ms per dispatch) | Unchanged from Phase 3 — this benchmark dispatches `VIDEO_UPDATED`, which nothing in Phase 4 subscribes to; `VIDEO_VIEW_RECORDED`/`VIDEO_STATS_ROLLED_UP` (Phase 4's own events) have no subscribers yet either, so they weren't expected to move this number and didn't |
+
+### Reading these numbers
+
+Every metric is either unchanged or within normal run-to-run jitter of Phase 3's baseline — genuinely unaffected, not coincidentally so: Phase 4's entire surface (two new tables, `RedisViewCounter`'s own Redis key namespace, three new WP-CLI commands) is disjoint from every operation these benchmarks exercise. That disjointness was confirmed by reasoning about which code path each benchmark touches, not assumed — the same standard applied in Phases 2 and 3. The real evidence that Phase 4's own operations work and perform reasonably is the live verification in `PHASE-4.md` §6 (real `views:flush`/`stats:rollup`/`views:partition-maintenance` runs against real Redis and real MySQL, inspected directly), not a number in this table.

@@ -13,15 +13,22 @@ x-wordpress-env: &wordpress-env
   # which caused wp-cli to report DISABLE_WP_CRON as unset even though
   # the live site had it correctly enabled).
   #
-  # TUBE_CACHE_REDIS_HOST/PORT (ARCHITECTURE.md §12 Phase 3): the
-  # WORDPRESS_DB_* vars above are natively read by the wordpress:* images
-  # themselves; Redis has no such native support, so tube-cache reads
-  # these two constants instead, baked in from REDIS_HOST/REDIS_PORT the
-  # same way every other value here comes from .env.
+  # TUBE_CACHE_REDIS_HOST/PORT (ARCHITECTURE.md §12 Phase 3) and
+  # TUBE_CORE_REDIS_HOST/PORT (Phase 4): the WORDPRESS_DB_* vars above are
+  # natively read by the wordpress:* images themselves; Redis has no such
+  # native support, so each plugin that needs it reads its own pair of
+  # constants instead, both baked in from the same REDIS_HOST/REDIS_PORT
+  # .env values (one physical Redis instance) — kept as separate,
+  # distinctly-named constants per plugin rather than shared, since
+  # tube-core cannot depend on tube-cache for this
+  # (ARCHITECTURE_FREEZE.md's frozen decision #1: tube-core has no plugin
+  # dependency) and each plugin's config should stay self-contained.
   WORDPRESS_CONFIG_EXTRA: |
     define( 'DISABLE_WP_CRON', true );
     define( 'TUBE_CACHE_REDIS_HOST', '${REDIS_HOST:-redis}' );
     define( 'TUBE_CACHE_REDIS_PORT', ${REDIS_PORT:-6379} );
+    define( 'TUBE_CORE_REDIS_HOST', '${REDIS_HOST:-redis}' );
+    define( 'TUBE_CORE_REDIS_PORT', ${REDIS_PORT:-6379} );
 
 services:
   db:

@@ -1,31 +1,36 @@
-# Tube Site — staging crontab skeleton (Phase 0)
+# Tube Site — staging crontab (Phase 0 skeleton, real commands added phase
+# by phase as each is built).
 #
 # Real WP-CLI commands are registered by tube-core, tube-search, and
-# tube-seo starting in Phase 1. None of them exist yet, so every entry
-# below invokes a no-op placeholder ("wp eval") instead — this proves the
-# Linux-cron -> WP-CLI -> WordPress path end to end before any business
-# logic exists. Cadences match ARCHITECTURE.md §7 exactly and must not
-# change when a placeholder is swapped for its real command; only the
-# invoked command itself changes.
+# tube-seo starting in Phase 1. Entries not yet built still invoke a
+# no-op placeholder ("wp eval") — this originally proved the Linux-cron ->
+# WP-CLI -> WordPress path end to end before any business logic existed,
+# and now marks exactly what's left to wire up. Cadences match
+# ARCHITECTURE.md §7 exactly and do not change when a placeholder is
+# swapped for its real command; only the invoked command itself changes.
 #
 # Format: busybox crond (Alpine), no user column — this file is installed
 # at /etc/crontabs/root, so every job already runs as root.
 # Minute Hour DayOfMonth Month DayOfWeek Command
 
-# views:flush — real command (Phase 1): wp tube-core views:flush
-* * * * * wp --path=/var/www/html --allow-root eval 'echo "[noop] tube-core views:flush\n";' >> /var/log/tube-cron/views-flush.log 2>&1
+# views:flush — real command (Phase 4)
+* * * * * wp --path=/var/www/html --allow-root tube-core views:flush >> /var/log/tube-cron/views-flush.log 2>&1
 
-# stats:rollup — real command (Phase 1): wp tube-core stats:rollup
-*/5 * * * * wp --path=/var/www/html --allow-root eval 'echo "[noop] tube-core stats:rollup\n";' >> /var/log/tube-cron/stats-rollup.log 2>&1
+# stats:rollup — real command (Phase 4)
+*/5 * * * * wp --path=/var/www/html --allow-root tube-core stats:rollup >> /var/log/tube-cron/stats-rollup.log 2>&1
 
-# stats:rollup --full (nightly, full recompute) — real command (Phase 1): wp tube-core stats:rollup --full
-0 3 * * * wp --path=/var/www/html --allow-root eval 'echo "[noop] tube-core stats:rollup --full\n";' >> /var/log/tube-cron/stats-rollup-full.log 2>&1
+# stats:rollup --full (nightly) — real command (Phase 4). See StatsRollup's
+# own docblock: at this project's real target scale, --full runs the exact
+# same recompute as the every-5-minutes job above — the flag only changes
+# what gets logged, not what runs.
+0 3 * * * wp --path=/var/www/html --allow-root tube-core stats:rollup --full >> /var/log/tube-cron/stats-rollup-full.log 2>&1
 
-# import:process — real command (Phase 1): wp tube-core import:process
+# import:process — real command (Phase 5): wp tube-core import:process
 * * * * * wp --path=/var/www/html --allow-root eval 'echo "[noop] tube-core import:process\n";' >> /var/log/tube-cron/import-process.log 2>&1
 
-# views:partition-maintenance (nightly) — real command (Phase 1): wp tube-core views:partition-maintenance
-0 2 * * * wp --path=/var/www/html --allow-root eval 'echo "[noop] tube-core views:partition-maintenance\n";' >> /var/log/tube-cron/partition-maintenance.log 2>&1
+# views:partition-maintenance (nightly) — real command (Phase 4). Retention
+# only, not MySQL partition rotation — see Retention's own docblock.
+0 2 * * * wp --path=/var/www/html --allow-root tube-core views:partition-maintenance >> /var/log/tube-cron/partition-maintenance.log 2>&1
 
 # watch-history:purge (nightly) — real command (Phase 1): wp tube-core watch-history:purge
 0 4 * * * wp --path=/var/www/html --allow-root eval 'echo "[noop] tube-core watch-history:purge\n";' >> /var/log/tube-cron/watch-history-purge.log 2>&1
