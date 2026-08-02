@@ -83,3 +83,31 @@ No new benchmark script this phase — unlike Phase 3 (which added `cache-operat
 ### Reading these numbers
 
 Every metric is either unchanged or within normal run-to-run jitter of Phase 3's baseline — genuinely unaffected, not coincidentally so: Phase 4's entire surface (two new tables, `RedisViewCounter`'s own Redis key namespace, three new WP-CLI commands) is disjoint from every operation these benchmarks exercise. That disjointness was confirmed by reasoning about which code path each benchmark touches, not assumed — the same standard applied in Phases 2 and 3. The real evidence that Phase 4's own operations work and perform reasonably is the live verification in `PHASE-4.md` §6 (real `views:flush`/`stats:rollup`/`views:partition-maintenance` runs against real Redis and real MySQL, inspected directly), not a number in this table.
+
+---
+
+## Phase 5 (tube-core: import pipeline, Cloudflare Stream webhook, watch history)
+
+Measured 2026-08-02 against the local Docker staging environment, stack already warm, immediately after Phase 5's Implementation Review and before its commit. Three consecutive runs of `ops/benchmark/run.sh`, same methodology as Phases 2–4.
+
+**New benchmark script this phase**: `ops/benchmark/import-throughput.php`, wired into `run.sh` in place of the "Import throughput: N/A" line every prior phase's report carried — this is the first phase where that row has a real subsystem to measure. It enqueues 200 synthetic items under a unique `source_key` prefix, times one `BatchProcessor::process()` run against all of them through the real `ImportQueueRepository` + `VideoImporter` (real `wp_insert_post()`, real `wp_tube_video_metadata` writes), then deletes everything it created — the same "benchmark scripts leave no residue" discipline `cache-operations.php` established in Phase 3.
+
+The first run of this report's REST/page-generation requests initially came back `502` — traced immediately to the `nginx` container holding a stale upstream IP for the `wordpress` container from an unrelated `docker compose up -d --force-recreate wordpress wpcli` earlier in this session (needed to pick up the newly-added `TUBE_CORE_CLOUDFLARE_STREAM_WEBHOOK_SECRET` env var), not a Phase 5 regression — `docker compose restart nginx` resolved it, confirmed by re-running the full harness clean afterward. Only the results below (post-fix) are reported.
+
+| Metric | Result | Notes |
+|---|---|---|
+| PHP memory usage | **51.313 MB** peak, identical across all 3 runs | Same operation as Phases 2–4 (`MigrationRunner::status()`) — **unchanged from Phase 4**. Phase 5 adds no new dependency this operation's code path autoloads |
+| Execution time | **0.853–1.249 ms** | Same range as Phase 4's 0.745–1.128 ms — unaffected, as expected |
+| SQL query count | **1 query**, identical across all 3 runs | Unchanged — this operation doesn't touch any of Phase 5's new tables |
+| Cache hits | **1,000** (Redis `INFO stats` → `keyspace_hits`) | Unchanged methodology and result from Phases 3–4 — Phase 5's Redis usage is limited to the webhook secret's plain PHP constant (no Redis at all) and the existing `tube_core:view_buffer`/tube-cache namespaces this benchmark doesn't touch |
+| Cache misses | **1,000** (Redis `INFO stats` → `keyspace_misses`) | Same as above |
+| REST latency | **10.67–14.28 ms** (`GET /wp-json/wp/v2/videos`, WordPress core's own endpoint) | Consistent with Phase 4's 9.08–13.90 ms range — unaffected, as expected: this endpoint doesn't route through any `tube/v1` controller Phase 5 added |
+| Page generation time | **6.62–7.48 ms** (`/watch/test-video-one/`), **7.08–7.37 ms** (`/`) | Consistent with Phase 4's ranges — unaffected, as expected: no theme/template code touches the import pipeline, webhook, or watch history yet |
+| Import throughput | **1,093.58–1,197.67 items/second** (166.99–182.89 ms for 200 items), `completed: 200, retried: 0, failed: 0` on every run | **First real number for this row** — see methodology above. All 200 items succeed on every run (deterministic synthetic payloads with unique `cf_stream_uid`s, no forced-failure items in this benchmark) |
+| Event dispatch cost | **28.83–30.80 ms total for 1,000 dispatches** (≈0.029–0.031 ms per dispatch) | Consistent with Phase 4's 29.06–30.17 ms range — unaffected, as expected: this benchmark still dispatches `VIDEO_UPDATED`, which nothing in Phase 5 subscribes to; `VIDEO_STREAM_STATUS_CHANGED`/`IMPORT_ITEM_COMPLETED`/`IMPORT_ITEM_FAILED` (Phase 5's own events) have no subscribers yet either |
+
+### Reading these numbers
+
+Every metric already tracked before this phase is either unchanged or within normal run-to-run jitter of Phase 4's baseline — Phase 5's entire surface (two new tables, one new REST controller pair, three new WP-CLI commands) is disjoint from every operation these benchmarks exercise, the same disjointness reasoning applied in every prior phase's report. **1,093–1,198 items/second sustained through the real, single-worker `import:process` pipeline is well beyond what this phase's real-scale target requires** — importing the entire stated ceiling of 10,000 videos in one `import:process` run would take roughly 8–9 seconds of pure processing time at this measured rate, against a design that runs continuously during an initial bulk backfill and every minute in steady state (`ARCHITECTURE.md` §7). This confirms `ImportQueueRepository::claim_batch()`'s "reclaim, then claim, then fetch" sequence (§2 of `PHASE-5.md`) and `VideoImporter`'s per-item `wp_insert_post()` + metadata-repository write are not a throughput bottleneck at this project's actual target scale, without needing to speculate about it.
+
+The real evidence that Phase 5's Cloudflare Stream webhook and watch history endpoints work correctly is the live/integration verification in `PHASE-5.md` §6 (real signed HTTP-shaped requests through the actual REST server, real resume-after-interruption, real duplicate-detection at both the import-queue and watch-history layers), not a number in this table — neither of those two features has a dedicated row in `DEVELOPMENT_RULES.md` §9's tracked-metrics table, and adding one un-asked-for would be scope creep this phase's "keep implementation simple" instruction rules out, the same restraint Phase 4's report already exercised for its own CLI commands.

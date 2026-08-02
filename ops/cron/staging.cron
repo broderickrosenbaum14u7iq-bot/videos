@@ -25,15 +25,17 @@
 # what gets logged, not what runs.
 0 3 * * * wp --path=/var/www/html --allow-root tube-core stats:rollup --full >> /var/log/tube-cron/stats-rollup-full.log 2>&1
 
-# import:process — real command (Phase 5): wp tube-core import:process
-* * * * * wp --path=/var/www/html --allow-root eval 'echo "[noop] tube-core import:process\n";' >> /var/log/tube-cron/import-process.log 2>&1
+# import:process — real command (Phase 5). Steady-state cadence below;
+# run manually in a tight loop for the initial bulk backfill instead
+# (ARCHITECTURE.md §7).
+* * * * * wp --path=/var/www/html --allow-root tube-core import:process >> /var/log/tube-cron/import-process.log 2>&1
 
 # views:partition-maintenance (nightly) — real command (Phase 4). Retention
 # only, not MySQL partition rotation — see Retention's own docblock.
 0 2 * * * wp --path=/var/www/html --allow-root tube-core views:partition-maintenance >> /var/log/tube-cron/partition-maintenance.log 2>&1
 
-# watch-history:purge (nightly) — real command (Phase 1): wp tube-core watch-history:purge
-0 4 * * * wp --path=/var/www/html --allow-root eval 'echo "[noop] tube-core watch-history:purge\n";' >> /var/log/tube-cron/watch-history-purge.log 2>&1
+# watch-history:purge (nightly) — real command (Phase 5).
+0 4 * * * wp --path=/var/www/html --allow-root tube-core watch-history:purge >> /var/log/tube-cron/watch-history-purge.log 2>&1
 
 # index:rebuild (nightly) — real command (Phase 7): wp tube-search index:rebuild
 0 1 * * * wp --path=/var/www/html --allow-root eval 'echo "[noop] tube-search index:rebuild\n";' >> /var/log/tube-cron/index-rebuild.log 2>&1

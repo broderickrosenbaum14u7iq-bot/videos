@@ -58,8 +58,8 @@ echo "Redis INFO stats after the run above (keyspace_hits/keyspace_misses are th
 docker compose exec -T redis redis-cli INFO stats | grep -E "keyspace_hits|keyspace_misses"
 
 echo
-echo "--- Import throughput ---"
-echo "N/A — no import pipeline exists yet (Phase 5)."
+echo "--- Import throughput (real ImportQueueRepository + VideoImporter + BatchProcessor) ---"
+docker compose exec -T wpcli wp eval-file ops/benchmark/import-throughput.php --allow-root
 
 echo
 echo "=== End benchmark run ==="

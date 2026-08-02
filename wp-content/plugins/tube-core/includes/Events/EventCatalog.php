@@ -27,15 +27,12 @@ namespace Tube_Core\Events;
  * project's prefixing discipline everywhere else (`wp_tube_*` tables,
  * `TUBE_CORE_*` constants, `Tube_Core\*` classes).
  *
- * Not every event listed here has a real dispatch call site yet: the four
- * `video.*` lifecycle events (Phase 2, see VideoLifecycleEvents) and the
- * two view-tracking events (Phase 4, see ViewRecorder/StatsRollup) are
- * wired to real triggers. The remaining three depend on triggers that
- * don't exist until Phase 5 (the import queue and the Cloudflare Stream
- * webhook) — they are still valid, listenable event names today (a
- * plugin built ahead of its trigger phase can register a listener
- * without error), they simply won't fire until their owning phase adds
- * the dispatch call site.
+ * Every event in this catalog now has a real dispatch call site: the
+ * four `video.*` lifecycle events (Phase 2, VideoLifecycleEvents), the
+ * two view-tracking events (Phase 4, ViewRecorder/StatsRollup), and the
+ * three Phase 5 events (VIDEO_STREAM_STATUS_CHANGED via
+ * Tube_Core\Stream\StreamStatusUpdater, IMPORT_ITEM_COMPLETED/
+ * IMPORT_ITEM_FAILED via Tube_Core\Import\BatchProcessor).
  */
 final class EventCatalog
 {
@@ -70,8 +67,10 @@ final class EventCatalog
     public const VIDEO_DELETED = 'tube_core.video.deleted';
 
     /**
-     * Reserved for Phase 5: fired from the Cloudflare Stream webhook
-     * handler when a video's encoding status changes.
+     * Fired from the Cloudflare Stream webhook handler
+     * (Tube_Core\Stream\StreamStatusUpdater) when a video's encoding
+     * status genuinely changes — not on a redelivered webhook reporting
+     * a status the video already has.
      *
      * Payload: `['video_id' => int, 'status' => string]`.
      */
@@ -96,16 +95,19 @@ final class EventCatalog
     public const VIDEO_STATS_ROLLED_UP = 'tube_core.video.stats_rolled_up';
 
     /**
-     * Reserved for Phase 5: fired when an import_queue item finishes
-     * successfully.
+     * Fired from the `import:process` WP-CLI job
+     * (Tube_Core\Import\BatchProcessor) when an import_queue item
+     * finishes successfully.
      *
      * Payload: `['queue_id' => int, 'video_id' => int]`.
      */
     public const IMPORT_ITEM_COMPLETED = 'tube_core.import.item_completed';
 
     /**
-     * Reserved for Phase 5: fired when an import_queue item exhausts
-     * its retry attempts.
+     * Fired from the `import:process` WP-CLI job
+     * (Tube_Core\Import\BatchProcessor) when an import_queue item
+     * exhausts its retry attempts — not on every individual retry, only
+     * the final one.
      *
      * Payload: `['queue_id' => int, 'error_message' => string]`.
      */

@@ -10,8 +10,10 @@ declare(strict_types=1);
 namespace Tube_Core;
 
 use Predis\Client;
+use Tube_Core\CLI\ImportCommand;
 use Tube_Core\CLI\MigrateCommand;
 use Tube_Core\CLI\ViewsCommand;
+use Tube_Core\CLI\WatchHistoryCommand;
 use Tube_Core\Content\CategoryTaxonomy;
 use Tube_Core\Content\TagTaxonomy;
 use Tube_Core\Content\VideoPostType;
@@ -19,6 +21,9 @@ use Tube_Core\Database\SchemaVersionStore;
 use Tube_Core\Events\Dispatcher;
 use Tube_Core\Events\VideoLifecycleEvents;
 use Tube_Core\Events\WordPressHookBus;
+use Tube_Core\Import\BatchProcessor;
+use Tube_Core\Import\Repositories\ImportQueueRepository;
+use Tube_Core\Import\VideoImporter;
 use Tube_Core\Migration\MigrationRunner;
 use Tube_Core\SchemaMigrations\Migration001CreateVideoMetadataTable;
 use Tube_Core\SchemaMigrations\Migration002CreateActorTables;
@@ -26,6 +31,13 @@ use Tube_Core\SchemaMigrations\Migration003CreateStudioTables;
 use Tube_Core\SchemaMigrations\Migration004AddActorStudioNameIndexes;
 use Tube_Core\SchemaMigrations\Migration005CreateVideoViewsTable;
 use Tube_Core\SchemaMigrations\Migration006CreateVideoStatisticsTable;
+use Tube_Core\SchemaMigrations\Migration007CreateImportQueueTable;
+use Tube_Core\SchemaMigrations\Migration008CreateWatchHistoryTable;
+use Tube_Core\Stream\StreamStatusUpdater;
+use Tube_Core\Stream\WebhookController;
+use Tube_Core\Stream\WebhookSignatureVerifier;
+use Tube_Core\Video\Repositories\VideoMetadataRepository;
+use Tube_Core\Video\Repositories\VideoMetadataRepositoryInterface;
 use Tube_Core\Views\RedisViewCounter;
 use Tube_Core\Views\Repositories\VideoStatisticsRepository;
 use Tube_Core\Views\Repositories\VideoViewsRepository;
@@ -34,6 +46,11 @@ use Tube_Core\Views\StatsRollup;
 use Tube_Core\Views\ViewCounterInterface;
 use Tube_Core\Views\ViewRecorder;
 use Tube_Core\Views\ViewsFlusher;
+use Tube_Core\WatchHistory\GuestHistoryRetention;
+use Tube_Core\WatchHistory\Repositories\WatchHistoryRepository;
+use Tube_Core\WatchHistory\VisitorToken;
+use Tube_Core\WatchHistory\WatchHistoryController;
+use Tube_Core\WatchHistory\WatchHistoryRecorder;
 use WP_CLI;
 
 /**
@@ -84,6 +101,13 @@ final class Plugin
     private ?ViewRecorder $view_recorder = null;
 
     /**
+     * Lazily created by self::video_metadata_repository().
+     *
+     * @var VideoMetadataRepositoryInterface|null
+     */
+    private ?VideoMetadataRepositoryInterface $video_metadata_repository = null;
+
+    /**
      * Private: use self::instance() instead.
      */
     private function __construct()
@@ -116,6 +140,8 @@ final class Plugin
         add_action('init', [$tag_taxonomy, 'register_taxonomy']);
 
         (new VideoLifecycleEvents($this->events()))->register();
+
+        add_action('rest_api_init', [$this, 'register_rest_routes']);
 
         $this->register_cli_commands();
     }
@@ -171,6 +197,8 @@ final class Plugin
                     Migration004AddActorStudioNameIndexes::class,
                     Migration005CreateVideoViewsTable::class,
                     Migration006CreateVideoStatisticsTable::class,
+                    Migration007CreateImportQueueTable::class,
+                    Migration008CreateWatchHistoryTable::class,
                 ]
             );
         }
@@ -242,8 +270,69 @@ final class Plugin
     }
 
     /**
-     * Register `wp tube migrate` and `wp tube-core views:flush`/
-     * `stats:rollup`/`views:partition-maintenance` when running under WP-CLI.
+     * The video-metadata repository, per ARCHITECTURE.md §12 Phase 5.
+     *
+     * Not exposed to other plugins the way self::events()/
+     * self::migration_runner() are — nothing outside tube-core needs
+     * direct metadata access yet; both of this phase's real consumers
+     * (`VideoImporter`, `StreamStatusUpdater`) live inside tube-core
+     * itself and are wired to this same instance below.
+     */
+    private function video_metadata_repository(): VideoMetadataRepositoryInterface
+    {
+        if (null === $this->video_metadata_repository) {
+            $this->video_metadata_repository = new VideoMetadataRepository();
+        }
+
+        return $this->video_metadata_repository;
+    }
+
+    /**
+     * Register `tube/v1` REST routes. Called on `rest_api_init`.
+     *
+     * Public only because WordPress's hook mechanism requires it (the
+     * same reason self::boot() is public) — not part of this class's
+     * intended external API the way self::events()/
+     * self::migration_runner()/self::view_recorder() are.
+     */
+    public function register_rest_routes(): void
+    {
+        $webhook_controller = new WebhookController(
+            new WebhookSignatureVerifier(),
+            new StreamStatusUpdater($this->video_metadata_repository(), $this->events())
+        );
+
+        register_rest_route(
+            'tube/v1',
+            '/webhooks/cloudflare-stream',
+            [
+                'methods'             => 'POST',
+                'callback'            => [$webhook_controller, 'handle'],
+                'permission_callback' => [$webhook_controller, 'check_signature'],
+            ]
+        );
+
+        $watch_history_controller = new WatchHistoryController(
+            new WatchHistoryRecorder(new WatchHistoryRepository()),
+            new VisitorToken()
+        );
+
+        register_rest_route(
+            'tube/v1',
+            '/videos/(?P<id>\d+)/watch-history',
+            [
+                'methods'             => 'POST',
+                'callback'            => [$watch_history_controller, 'handle'],
+                'permission_callback' => '__return_true',
+            ]
+        );
+    }
+
+    /**
+     * Register `wp tube migrate`, `wp tube-core views:flush`/
+     * `stats:rollup`/`views:partition-maintenance`,
+     * `wp tube-core import:enqueue`/`import:process`/`import:status`,
+     * and `wp tube-core watch-history:purge` when running under WP-CLI.
      */
     private function register_cli_commands(): void
     {
@@ -268,5 +357,24 @@ final class Plugin
         WP_CLI::add_command('tube-core views:flush', [$views_command, 'flush']);
         WP_CLI::add_command('tube-core stats:rollup', [$views_command, 'rollup']);
         WP_CLI::add_command('tube-core views:partition-maintenance', [$views_command, 'partition_maintenance']);
+
+        $queue_repository = new ImportQueueRepository();
+
+        $import_command = new ImportCommand(
+            $queue_repository,
+            new BatchProcessor(
+                $queue_repository,
+                new VideoImporter($this->video_metadata_repository()),
+                $this->events()
+            )
+        );
+
+        WP_CLI::add_command('tube-core import:enqueue', [$import_command, 'enqueue']);
+        WP_CLI::add_command('tube-core import:process', [$import_command, 'process']);
+        WP_CLI::add_command('tube-core import:status', [$import_command, 'status']);
+
+        $watch_history_command = new WatchHistoryCommand(new GuestHistoryRetention(new WatchHistoryRepository()));
+
+        WP_CLI::add_command('tube-core watch-history:purge', [$watch_history_command, 'purge']);
     }
 }

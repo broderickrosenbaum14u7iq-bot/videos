@@ -23,12 +23,18 @@ x-wordpress-env: &wordpress-env
   # tube-core cannot depend on tube-cache for this
   # (ARCHITECTURE_FREEZE.md's frozen decision #1: tube-core has no plugin
   # dependency) and each plugin's config should stay self-contained.
+  #
+  # TUBE_CORE_CLOUDFLARE_STREAM_WEBHOOK_SECRET (Phase 5): the shared
+  # secret Tube_Core\Stream\WebhookController verifies incoming Cloudflare
+  # Stream webhook signatures against. Fails closed if unset (every
+  # request rejected) — see WebhookController::check_signature().
   WORDPRESS_CONFIG_EXTRA: |
     define( 'DISABLE_WP_CRON', true );
     define( 'TUBE_CACHE_REDIS_HOST', '${REDIS_HOST:-redis}' );
     define( 'TUBE_CACHE_REDIS_PORT', ${REDIS_PORT:-6379} );
     define( 'TUBE_CORE_REDIS_HOST', '${REDIS_HOST:-redis}' );
     define( 'TUBE_CORE_REDIS_PORT', ${REDIS_PORT:-6379} );
+    define( 'TUBE_CORE_CLOUDFLARE_STREAM_WEBHOOK_SECRET', '${CLOUDFLARE_STREAM_WEBHOOK_SECRET:-}' );
 
 services:
   db:
