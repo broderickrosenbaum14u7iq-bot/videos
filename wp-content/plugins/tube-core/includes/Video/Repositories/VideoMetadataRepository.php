@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace Tube_Core\Video\Repositories;
 
 use Tube_Core\Video\CfStreamStatus;
+use Tube_Core\Video\VideoMetadata;
 
 /**
  * Data access for wp_tube_video_metadata (VideoMetadataRepositoryInterface).
@@ -49,6 +50,44 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
                 'updated_at'    => $now,
             ],
             ['%d', '%s', '%s', '%s', '%s']
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int $video_id The video post ID.
+     */
+    public function find(int $video_id): ?VideoMetadata
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
+        $row = $wpdb->get_row(
+            $wpdb->prepare(
+                'SELECT video_id, cf_stream_uid, cf_status, duration_seconds, thumbnail_time_seconds,'
+                . ' poster_image_id, og_image_id FROM %i WHERE video_id = %d',
+                $wpdb->prefix . 'tube_video_metadata',
+                $video_id
+            ),
+            ARRAY_A
+        );
+
+        if (! is_array($row)) {
+            return null;
+        }
+
+        /** @var array{video_id: string, cf_stream_uid: string, cf_status: string, duration_seconds: string|null, thumbnail_time_seconds: string, poster_image_id: string|null, og_image_id: string|null} $row */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        return new VideoMetadata(
+            (int) $row['video_id'],
+            $row['cf_stream_uid'],
+            CfStreamStatus::from($row['cf_status']),
+            null === $row['duration_seconds'] ? null : (int) $row['duration_seconds'],
+            (int) $row['thumbnail_time_seconds'],
+            null === $row['poster_image_id'] ? null : (int) $row['poster_image_id'],
+            null === $row['og_image_id'] ? null : (int) $row['og_image_id']
         );
     }
 

@@ -272,13 +272,15 @@ final class Plugin
     /**
      * The video-metadata repository, per ARCHITECTURE.md §12 Phase 5.
      *
-     * Not exposed to other plugins the way self::events()/
-     * self::migration_runner() are — nothing outside tube-core needs
-     * direct metadata access yet; both of this phase's real consumers
-     * (`VideoImporter`, `StreamStatusUpdater`) live inside tube-core
-     * itself and are wired to this same instance below.
+     * Public as of Phase 6: `tube-player`'s
+     * `Tube_Player\Video\TubeCoreVideoRenderDataRepository` calls
+     * `self::find()` here to read a video's Stream UID/duration/thumbnail
+     * offset/image overrides for rendering — the same "public accessor
+     * for a cross-cutting concern" shape as self::events()/
+     * self::view_recorder(), now exercised by a real cross-plugin
+     * consumer for the first time.
      */
-    private function video_metadata_repository(): VideoMetadataRepositoryInterface
+    public function video_metadata_repository(): VideoMetadataRepositoryInterface
     {
         if (null === $this->video_metadata_repository) {
             $this->video_metadata_repository = new VideoMetadataRepository();

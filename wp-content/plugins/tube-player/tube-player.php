@@ -12,8 +12,10 @@
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       tube-player
  *
- * Phase 0 scaffold only, no business logic yet. Built in its assigned
- * implementation phase per the approved architecture (ARCHITECTURE.md).
+ * Phase 6: Cloudflare Stream URL construction (unsigned by default,
+ * signed if configured), click-to-load embed, poster/thumbnail
+ * rendering with the Cloudflare Images override path (ARCHITECTURE.md
+ * §8/§12). No MySQL tables of its own (ARCHITECTURE.md §4).
  *
  * @package Tube_Player
  */
@@ -27,3 +29,9 @@ if (!defined('ABSPATH')) {
 const TUBE_PLAYER_VERSION = '0.1.0';
 const TUBE_PLAYER_FILE    = __FILE__;
 const TUBE_PLAYER_DIR     = __DIR__;
+
+if (file_exists(TUBE_PLAYER_DIR . '/vendor/autoload.php')) {
+    require_once TUBE_PLAYER_DIR . '/vendor/autoload.php';
+}
+
+require_once TUBE_PLAYER_DIR . '/includes/template-tags.php';

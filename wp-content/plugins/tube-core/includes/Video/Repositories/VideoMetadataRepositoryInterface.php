@@ -10,15 +10,18 @@ declare(strict_types=1);
 namespace Tube_Core\Video\Repositories;
 
 use Tube_Core\Video\CfStreamStatus;
+use Tube_Core\Video\VideoMetadata;
 
 /**
  * Contract for wp_tube_video_metadata data access, per the
  * `{Noun}Repository` convention (ARCHITECTURE.md §19.4).
  *
  * Not built in Phase 1 (which only created the table via migration) —
- * this is the first real consumer, needed by both `VideoImporter`
- * (Phase 5's import pipeline) and `StreamStatusUpdater` (Phase 5's
- * Cloudflare Stream webhook handler).
+ * this is the first real consumer, needed by `VideoImporter`/
+ * `StreamStatusUpdater` (Phase 5's import pipeline and Cloudflare Stream
+ * webhook handler) and, as of `find()`, `tube-player` (Phase 6's
+ * rendering layer, via its own decoupled adapter — see
+ * `Tube_Player\Video\TubeCoreVideoRenderDataRepository`).
  *
  * Adopted per the interface-justification rule (§19.1): the real payoff
  * is a test fake `VideoImporter`, `BatchProcessor`, and
@@ -35,6 +38,20 @@ interface VideoMetadataRepositoryInterface
      * @param CfStreamStatus $status        The initial encoding status.
      */
     public function create(int $video_id, string $cf_stream_uid, CfStreamStatus $status): void;
+
+    /**
+     * Fetch the full stored metadata for one video.
+     *
+     * The read path `tube-player` (Phase 6) uses to render a video —
+     * unlike `status_for()`, this returns every column a renderer needs
+     * (Stream UID, duration, thumbnail offset, image overrides) in one
+     * query, not one call per field.
+     *
+     * @param int $video_id The video post ID.
+     *
+     * @return VideoMetadata|null The stored metadata, or null if the video has no metadata row.
+     */
+    public function find(int $video_id): ?VideoMetadata;
 
     /**
      * Find the video a Cloudflare Stream UID belongs to.

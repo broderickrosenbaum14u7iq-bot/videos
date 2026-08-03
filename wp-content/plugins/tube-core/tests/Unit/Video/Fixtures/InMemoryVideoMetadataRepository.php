@@ -11,6 +11,7 @@ namespace Tube_Core\Tests\Unit\Video\Fixtures;
 
 use Tube_Core\Video\CfStreamStatus;
 use Tube_Core\Video\Repositories\VideoMetadataRepositoryInterface;
+use Tube_Core\Video\VideoMetadata;
 
 /**
  * An in-memory VideoMetadataRepositoryInterface — no database. Stateful
@@ -81,6 +82,39 @@ final class InMemoryVideoMetadataRepository implements VideoMetadataRepositoryIn
 
         $this->video_id_by_uid[ $cf_stream_uid ] = $video_id;
         $this->status_by_video_id[ $video_id ]   = $status;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * Not exercised by any current consumer of this fixture (`find()` is
+     * `tube-player`'s read path, via its own decoupled fake) — implemented
+     * minimally from the same state maps `create()`/`update_status()`
+     * already track, defaulting the fields this fixture doesn't track
+     * (duration, thumbnail offset, image overrides) to satisfy the
+     * interface honestly rather than leaving it unimplemented.
+     *
+     * @param int $video_id The video post ID.
+     */
+    public function find(int $video_id): ?VideoMetadata
+    {
+        $status = $this->status_by_video_id[ $video_id ] ?? null;
+
+        if (null === $status) {
+            return null;
+        }
+
+        $cf_stream_uid = array_search($video_id, $this->video_id_by_uid, true);
+
+        return new VideoMetadata(
+            $video_id,
+            is_string($cf_stream_uid) ? $cf_stream_uid : '',
+            $status,
+            null,
+            0,
+            null,
+            null
+        );
     }
 
     /**

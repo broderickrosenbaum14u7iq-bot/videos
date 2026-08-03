@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/Integration/bootstrap.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache/integration">
+    <!--
+        Real-WordPress integration suite (see tests/Integration). Requires
+        a live WordPress stack with both tube-core and tube-player active,
+        and must be run inside the wpcli Docker container:
+
+            docker compose exec wpcli vendor/bin/phpunit -c phpunit-integration.xml.dist
+
+        Not run on the host, and not part of the plain `vendor/bin/phpunit`
+        (phpunit.xml.dist) unit suite — see phpunit.xml.dist and PHASE-6.md.
+    -->
+    <testsuites>
+        <testsuite name="integration">
+            <directory>tests/Integration</directory>
+        </testsuite>
+    </testsuites>
+</phpunit>

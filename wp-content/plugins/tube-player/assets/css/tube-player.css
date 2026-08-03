@@ -1,0 +1,72 @@
+/*
+ * tube-player click-to-load player styles.
+ *
+ * `aspect-ratio` on the wrapper reserves the player's box before the
+ * poster image loads -- zero CLS by construction (ARCHITECTURE.md §12
+ * Phase 6), not by measuring after the fact. Everything inside is
+ * absolutely positioned to fill that reserved box.
+ */
+
+.tube-player {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    background: #000;
+}
+
+.tube-player__poster {
+    display: block;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.tube-player iframe {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
+.tube-player__play {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+}
+
+.tube-player__play:focus-visible {
+    outline: 3px solid #fff;
+    outline-offset: -3px;
+}
+
+.tube-player__play-icon {
+    width: clamp(40px, 15%, 96px);
+    height: clamp(40px, 15%, 96px);
+    padding: 12px;
+    box-sizing: content-box;
+    fill: #fff;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 50%;
+}
+
+.tube-player__noscript-link {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    text-decoration: underline;
+}
