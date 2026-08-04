@@ -20,8 +20,9 @@ use Tube_Core\Video\VideoMetadata;
  * this is the first real consumer, needed by `VideoImporter`/
  * `StreamStatusUpdater` (Phase 5's import pipeline and Cloudflare Stream
  * webhook handler) and, as of `find()`, `tube-player` (Phase 6's
- * rendering layer, via its own decoupled adapter — see
- * `Tube_Player\Video\TubeCoreVideoRenderDataRepository`).
+ * rendering layer, via a direct call from its own
+ * `includes/template-tags.php` — the one WordPress/tube-core-coupled
+ * boundary in that plugin, verified live rather than unit-tested).
  *
  * Adopted per the interface-justification rule (§19.1): the real payoff
  * is a test fake `VideoImporter`, `BatchProcessor`, and

@@ -67,4 +67,42 @@ final class InMemoryVideoStatisticsRepository implements VideoStatisticsReposito
     {
         $this->update_windows_calls[] = $windows;
     }
+
+    /**
+     * What top_by_views_total() should return.
+     *
+     * @var list<array{video_id: int, count: int}>
+     */
+    public array $top_by_views_total_to_return = [];
+
+    /**
+     * What top_by_views_7d() should return.
+     *
+     * @var list<array{video_id: int, count: int}>
+     */
+    public array $top_by_views_7d_to_return = [];
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int $limit Maximum number of videos to return.
+     *
+     * @return list<array{video_id: int, count: int}> Highest `views_total` first.
+     */
+    public function top_by_views_total(int $limit): array
+    {
+        return array_slice($this->top_by_views_total_to_return, 0, $limit);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int $limit Maximum number of videos to return.
+     *
+     * @return list<array{video_id: int, count: int}> Highest `views_7d` first.
+     */
+    public function top_by_views_7d(int $limit): array
+    {
+        return array_slice($this->top_by_views_7d_to_return, 0, $limit);
+    }
 }

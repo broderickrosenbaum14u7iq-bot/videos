@@ -52,43 +52,90 @@ final class CachePurgeSubscriberTest extends TestCase
     }
 
     /**
-     * Purging a video deletes exactly that video's detail key.
+     * Purging a video deletes exactly that video's detail and related-videos keys.
      */
-    public function test_purge_video_deletes_the_video_detail_key(): void
+    public function test_purge_video_deletes_the_video_detail_and_related_videos_keys(): void
     {
         $this->subscriber->purge_video(42);
 
-        self::assertSame([CacheKeys::video_detail(42)], $this->cache->deleted);
+        self::assertSame(
+            [CacheKeys::video_detail(42), CacheKeys::related_videos(42)],
+            $this->cache->deleted
+        );
     }
 
     /**
-     * The published handler purges the video named in the payload.
+     * The published handler purges the payload video's own keys, plus
+     * the site-wide "Recently Added" listing.
      */
-    public function test_handle_video_published_purges_the_payload_video(): void
+    public function test_handle_video_published_purges_the_payload_video_and_recently_added(): void
     {
         $this->subscriber->handle_video_published(['video_id' => 7]);
 
-        self::assertSame([CacheKeys::video_detail(7)], $this->cache->deleted);
+        self::assertSame(
+            [CacheKeys::video_detail(7), CacheKeys::related_videos(7), CacheKeys::recently_added()],
+            $this->cache->deleted
+        );
     }
 
     /**
-     * The updated handler purges the video named in the payload.
+     * Even with a malformed payload, "Recently Added" is still purged —
+     * it doesn't need a video_id to know it might be stale (the handler
+     * still fired, so *something* was published).
+     */
+    public function test_handle_video_published_purges_recently_added_even_with_a_malformed_payload(): void
+    {
+        $this->subscriber->handle_video_published([]);
+
+        self::assertSame([CacheKeys::recently_added()], $this->cache->deleted);
+    }
+
+    /**
+     * The updated handler purges only the payload video's own keys.
      */
     public function test_handle_video_updated_purges_the_payload_video(): void
     {
         $this->subscriber->handle_video_updated(['video_id' => 8]);
 
-        self::assertSame([CacheKeys::video_detail(8)], $this->cache->deleted);
+        self::assertSame(
+            [CacheKeys::video_detail(8), CacheKeys::related_videos(8)],
+            $this->cache->deleted
+        );
     }
 
     /**
-     * The deleted handler purges the video named in the payload.
+     * The deleted handler purges the payload video's own keys, plus the
+     * site-wide "Trending"/"Most Viewed" listings.
      */
-    public function test_handle_video_deleted_purges_the_payload_video(): void
+    public function test_handle_video_deleted_purges_the_payload_video_and_trending_most_viewed(): void
     {
         $this->subscriber->handle_video_deleted(['video_id' => 9]);
 
-        self::assertSame([CacheKeys::video_detail(9)], $this->cache->deleted);
+        self::assertSame(
+            [
+                CacheKeys::video_detail(9),
+                CacheKeys::related_videos(9),
+                CacheKeys::trending(),
+                CacheKeys::most_viewed(),
+            ],
+            $this->cache->deleted
+        );
+    }
+
+    /**
+     * The stats-rolled-up handler purges only "Trending"/"Most Viewed" —
+     * never an individual video's own cache entry, per ARCHITECTURE.md §16.1.
+     */
+    public function test_handle_video_stats_rolled_up_purges_only_trending_and_most_viewed(): void
+    {
+        $this->subscriber->handle_video_stats_rolled_up(
+            [
+                'video_id'    => 5,
+                'views_total' => 100,
+            ]
+        );
+
+        self::assertSame([CacheKeys::trending(), CacheKeys::most_viewed()], $this->cache->deleted);
     }
 
     /**
@@ -106,17 +153,17 @@ final class CachePurgeSubscriberTest extends TestCase
     }
 
     /**
-     * A payload missing `video_id` is ignored rather than thrown out of the handler.
+     * A payload missing `video_id` skips the video-specific purge rather than throwing.
      */
     public function test_handler_ignores_a_payload_missing_video_id(): void
     {
-        $this->subscriber->handle_video_published([]);
+        $this->subscriber->handle_video_updated([]);
 
         self::assertSame([], $this->cache->deleted);
     }
 
     /**
-     * A payload with a non-numeric `video_id` is ignored rather than thrown out of the handler.
+     * A payload with a non-numeric `video_id` skips the video-specific purge rather than throwing.
      */
     public function test_handler_ignores_a_payload_with_a_non_numeric_video_id(): void
     {

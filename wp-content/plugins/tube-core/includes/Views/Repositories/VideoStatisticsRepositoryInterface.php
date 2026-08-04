@@ -55,4 +55,28 @@ interface VideoStatisticsRepositoryInterface
      * @param array<int, array{today: int, d7: int, d30: int}> $windows Video ID => window values.
      */
     public function update_windows(array $windows): void;
+
+    /**
+     * The videos with the highest all-time `views_total`, per
+     * ARCHITECTURE.md §12 Phase 7's "Most Viewed" ("read only from the
+     * precomputed statistics table") — an indexed `ORDER BY ... LIMIT`
+     * against `views_total_idx`, not a runtime aggregation.
+     *
+     * @param int $limit Maximum number of videos to return.
+     *
+     * @return list<array{video_id: int, count: int}> Highest `views_total` first.
+     */
+    public function top_by_views_total(int $limit): array;
+
+    /**
+     * The videos with the highest 7-day `views_7d`, per ARCHITECTURE.md
+     * §12 Phase 7's "Trending" ("use the existing statistics table, no
+     * runtime aggregation") — an indexed `ORDER BY ... LIMIT` against
+     * `views_7d_idx`.
+     *
+     * @param int $limit Maximum number of videos to return.
+     *
+     * @return list<array{video_id: int, count: int}> Highest `views_7d` first.
+     */
+    public function top_by_views_7d(int $limit): array;
 }

@@ -33,3 +33,5 @@ parameters:
         - vendor/php-stubs/wp-cli-stubs/wp-cli-stubs.php
         - wp-content/plugins/tube-core/vendor/autoload.php
         - wp-content/plugins/tube-cache/vendor/autoload.php
+        - wp-content/plugins/tube-player/vendor/autoload.php
+        - wp-content/plugins/tube-search/vendor/autoload.php

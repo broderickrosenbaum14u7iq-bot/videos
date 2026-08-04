@@ -121,4 +121,75 @@ final class VideoStatisticsRepository implements VideoStatisticsRepositoryInterf
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- see the comment above $sql's assignment.
         $wpdb->query($sql);
     }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int $limit Maximum number of videos to return.
+     *
+     * @return list<array{video_id: int, count: int}> Highest `views_total` first.
+     */
+    public function top_by_views_total(int $limit): array
+    {
+        return $this->top_by('views_total', $limit);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int $limit Maximum number of videos to return.
+     *
+     * @return list<array{video_id: int, count: int}> Highest `views_7d` first.
+     */
+    public function top_by_views_7d(int $limit): array
+    {
+        return $this->top_by('views_7d', $limit);
+    }
+
+    /**
+     * Shared implementation behind self::top_by_views_total()/self::top_by_views_7d():
+     * an indexed `ORDER BY {$column} DESC LIMIT` — the column name is
+     * never caller-supplied (both public methods pass a fixed literal),
+     * so this is safe despite not being a `%i`-prepared identifier.
+     *
+     * @param 'views_total'|'views_7d' $column The column to sort by — always views_total_idx or views_7d_idx.
+     * @param int                      $limit  Maximum number of videos to return.
+     *
+     * @return list<array{video_id: int, count: int}> Highest value first.
+     */
+    private function top_by(string $column, int $limit): array
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        // {$column} is never caller-supplied -- both public methods above
+        // pass a fixed literal ('views_total'/'views_7d'), never a value
+        // that could originate from a request; %i/%d cover every value
+        // that IS variable here.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- see comment above.
+                "SELECT video_id, {$column} AS count FROM %i ORDER BY {$column} DESC LIMIT %d",
+                $wpdb->prefix . 'tube_video_statistics',
+                $limit
+            ),
+            ARRAY_A
+        );
+
+        // Same documented wordpress-stubs gap as VideoViewsRepository::window_sums().
+        /** @var array<int, array{video_id: string, count: string}> $rows */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+        $rows = (array) $rows;
+
+        $result = [];
+
+        foreach ($rows as $row) {
+            $result[] = [
+                'video_id' => (int) $row['video_id'],
+                'count'    => (int) $row['count'],
+            ];
+        }
+
+        return $result;
+    }
 }

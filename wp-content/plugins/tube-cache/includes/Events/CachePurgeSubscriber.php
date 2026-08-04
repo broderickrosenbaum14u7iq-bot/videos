@@ -14,9 +14,15 @@ use Tube_Cache\Cache\CacheInterface;
 use Tube_Cache\Cache\CacheKeys;
 
 /**
- * Purges cached video-detail entries in reaction to tube-core's video
- * lifecycle events, per ARCHITECTURE.md §12 Phase 3 and §16's "Redis
- * object cache: purge on video.published/updated/deleted" row.
+ * Purges cached video-detail and discovery-listing entries in reaction
+ * to tube-core's video lifecycle/stats events, per ARCHITECTURE.md §12
+ * Phase 3's "Redis object cache: purge on video.published/updated/
+ * deleted" row and §16.1's exact per-event purge table — extended in
+ * Phase 7 to cover tube-search's discovery caches (`related_videos`,
+ * `trending`, `most_viewed`, `recently_added`) using the same
+ * `CacheKeys` builders tube-search's own query classes write under, so
+ * the key a writer uses and the key this subscriber deletes are
+ * guaranteed to match.
  *
  * Subscribes via WordPress's native add_action() on tube-core's
  * documented, versioned hook-name strings (ARCHITECTURE.md §6) —
@@ -73,6 +79,13 @@ final class CachePurgeSubscriber
     private const VIDEO_DELETED = 'tube_core.video.deleted';
 
     /**
+     * Must match Tube_Core\Events\EventCatalog::VIDEO_STATS_ROLLED_UP
+     * exactly — see this class's docblock for why tube-cache references
+     * the literal string instead of that constant.
+     */
+    private const VIDEO_STATS_ROLLED_UP = 'tube_core.video.stats_rolled_up';
+
+    /**
      * Construct around the cache entries this subscriber purges.
      *
      * @param CacheInterface $cache The cache to purge entries from.
@@ -94,16 +107,20 @@ final class CachePurgeSubscriber
         add_action(self::VIDEO_PUBLISHED, [$this, 'handle_video_published'], 10, 1);
         add_action(self::VIDEO_UPDATED, [$this, 'handle_video_updated'], 10, 1);
         add_action(self::VIDEO_DELETED, [$this, 'handle_video_deleted'], 10, 1);
+        add_action(self::VIDEO_STATS_ROLLED_UP, [$this, 'handle_video_stats_rolled_up'], 10, 1);
     }
 
     /**
-     * `tube_core.video.published` handler.
+     * `tube_core.video.published` handler. A newly-published video can
+     * change the "Recently Added" listing, in addition to its own detail/
+     * related-videos keys (self::purge_video()).
      *
      * @param array<string, mixed> $payload Carries `video_id` per EVENTS.md.
      */
     public function handle_video_published(array $payload): void
     {
         $this->purge_from_payload($payload);
+        $this->cache->delete(CacheKeys::recently_added());
     }
 
     /**
@@ -117,35 +134,69 @@ final class CachePurgeSubscriber
     }
 
     /**
-     * `tube_core.video.deleted` handler.
+     * `tube_core.video.deleted` handler. A deleted video must stop
+     * appearing in the site-wide "Trending"/"Most Viewed" listings
+     * immediately, not just after their own TTL/next stats rollup — in
+     * addition to its own detail/related-videos keys (self::purge_video()).
      *
      * @param array<string, mixed> $payload Carries `video_id` per EVENTS.md.
      */
     public function handle_video_deleted(array $payload): void
     {
         $this->purge_from_payload($payload);
+        $this->cache->delete(CacheKeys::trending());
+        $this->cache->delete(CacheKeys::most_viewed());
     }
 
     /**
-     * Purge the cached detail entry for one video.
+     * `tube_core.video.stats_rolled_up` handler — fired once per video,
+     * every rollup cycle (`Tube_Core\Views\StatsRollup`, every 5 minutes).
+     * Per ARCHITECTURE.md §16.1's exact row for this event: purge
+     * "Trending"/"Most Viewed" listing keys **only**, never an individual
+     * video's own cache entry. Deliberately ignores `$payload` — these
+     * two keys are purged regardless of which video the rollup is
+     * currently reporting on. Purging the same two fixed keys redundantly
+     * once per video in a rollup cycle is a deliberately accepted,
+     * harmless cost (an idempotent Redis `DEL` on an already-purged key),
+     * not a bug — see PHASE-7.md for why building a debounce mechanism
+     * for this would be exactly the unjustified complexity this
+     * project's "avoid enterprise patterns" instruction rules out.
      *
-     * Only the video's own detail key is purged in this phase. Purging
-     * the listing keys ARCHITECTURE.md §16 also describes (per
-     * category/tag/actor/studio the video belongs to) needs those
-     * listings' own query/repository layer to exist first (tube-search,
-     * Phase 7; the actor/studio repositories, deferred per
-     * ARCHITECTURE_FREEZE.md's Flexible Decisions #2) — building that
-     * purge logic now, against tables/queries that don't exist yet, would
-     * be exactly the kind of speculative work Phase 2's precedent
-     * (deferring the five trigger-less events) already established this
-     * project does not do. Extending this method is the natural place to
-     * add that purging once its real trigger phase builds it.
+     * @param array<string, mixed> $payload Carries `video_id`/`views_total` per EVENTS.md — unused here (see above).
+     */
+    // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found, Squiz.Commenting.FunctionComment.Missing -- $payload is unused deliberately (see docblock above); this ignore comment sits between the docblock and signature only because PHPCS's own docblock-adjacency check requires it here.
+    public function handle_video_stats_rolled_up(array $payload): void
+    {
+        $this->cache->delete(CacheKeys::trending());
+        $this->cache->delete(CacheKeys::most_viewed());
+    }
+
+    /**
+     * Purge the cached entries tied directly to one video: its own
+     * detail lookup and its own related-videos list.
      *
-     * @param int $video_id The video whose cached detail entry should be purged.
+     * Does **not** attempt to purge every *other* video's related-videos
+     * list that might now include or exclude this one (e.g. a sibling
+     * sharing this video's category) — that would be an unbounded fan-out
+     * purge at this project's real scale, the same class of tradeoff
+     * ARCHITECTURE.md §16.2 already accepts for deep archive pages.
+     * `related_videos()` cache entries carry a short TTL specifically as
+     * the backstop for that cross-video staleness (see
+     * `Tube_Search\Discovery\RelatedVideosFinder`).
+     *
+     * Taxonomy/actor/studio archive-listing keys ARCHITECTURE.md §16 also
+     * describes are still not purged here — that's page-listing/archive
+     * caching, out of Phase 7's scope (§12 Phase 7 lists tube-search's
+     * discovery features by name; general archive listing pages are a
+     * theme-integration concern, Phase 8+) — not because the mechanism is
+     * hard to add later.
+     *
+     * @param int $video_id The video whose cached entries should be purged.
      */
     public function purge_video(int $video_id): void
     {
         $this->cache->delete(CacheKeys::video_detail($video_id));
+        $this->cache->delete(CacheKeys::related_videos($video_id));
     }
 
     /**

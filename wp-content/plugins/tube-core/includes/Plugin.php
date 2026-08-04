@@ -40,6 +40,7 @@ use Tube_Core\Video\Repositories\VideoMetadataRepository;
 use Tube_Core\Video\Repositories\VideoMetadataRepositoryInterface;
 use Tube_Core\Views\RedisViewCounter;
 use Tube_Core\Views\Repositories\VideoStatisticsRepository;
+use Tube_Core\Views\Repositories\VideoStatisticsRepositoryInterface;
 use Tube_Core\Views\Repositories\VideoViewsRepository;
 use Tube_Core\Views\Retention;
 use Tube_Core\Views\StatsRollup;
@@ -106,6 +107,13 @@ final class Plugin
      * @var VideoMetadataRepositoryInterface|null
      */
     private ?VideoMetadataRepositoryInterface $video_metadata_repository = null;
+
+    /**
+     * Lazily created by self::video_statistics_repository().
+     *
+     * @var VideoStatisticsRepositoryInterface|null
+     */
+    private ?VideoStatisticsRepositoryInterface $video_statistics_repository = null;
 
     /**
      * Private: use self::instance() instead.
@@ -272,13 +280,12 @@ final class Plugin
     /**
      * The video-metadata repository, per ARCHITECTURE.md §12 Phase 5.
      *
-     * Public as of Phase 6: `tube-player`'s
-     * `Tube_Player\Video\TubeCoreVideoRenderDataRepository` calls
-     * `self::find()` here to read a video's Stream UID/duration/thumbnail
-     * offset/image overrides for rendering — the same "public accessor
-     * for a cross-cutting concern" shape as self::events()/
-     * self::view_recorder(), now exercised by a real cross-plugin
-     * consumer for the first time.
+     * Public as of Phase 6: `tube-player`'s `includes/template-tags.php`
+     * calls `self::find()` here directly to read a video's Stream UID/
+     * duration/thumbnail offset/image overrides for rendering — the same
+     * "public accessor for a cross-cutting concern" shape as
+     * self::events()/self::view_recorder(), now exercised by a real
+     * cross-plugin consumer for the first time.
      */
     public function video_metadata_repository(): VideoMetadataRepositoryInterface
     {
@@ -287,6 +294,26 @@ final class Plugin
         }
 
         return $this->video_metadata_repository;
+    }
+
+    /**
+     * The video-statistics repository, per ARCHITECTURE.md §12 Phase 4.
+     *
+     * Public as of Phase 7: `tube-search`'s own
+     * `Tube_Search\Discovery\TubeCorePopularityRepository` calls
+     * `self::top_by_views_total()`/`self::top_by_views_7d()` here for
+     * "Most Viewed"/"Trending" — reading tube-core's precomputed
+     * statistics table through its own repository API rather than
+     * querying `wp_tube_video_statistics` directly, per the "no plugin
+     * queries another plugin's tables" rule (`DEVELOPMENT_RULES.md` §6.8).
+     */
+    public function video_statistics_repository(): VideoStatisticsRepositoryInterface
+    {
+        if (null === $this->video_statistics_repository) {
+            $this->video_statistics_repository = new VideoStatisticsRepository();
+        }
+
+        return $this->video_statistics_repository;
     }
 
     /**
@@ -344,12 +371,11 @@ final class Plugin
 
         WP_CLI::add_command('tube migrate', new MigrateCommand($this->migration_runner()));
 
-        $views_repository      = new VideoViewsRepository();
-        $statistics_repository = new VideoStatisticsRepository();
+        $views_repository = new VideoViewsRepository();
 
         $views_command = new ViewsCommand(
-            new ViewsFlusher($this->view_counter(), $views_repository, $statistics_repository),
-            new StatsRollup($views_repository, $statistics_repository, $this->events()),
+            new ViewsFlusher($this->view_counter(), $views_repository, $this->video_statistics_repository()),
+            new StatsRollup($views_repository, $this->video_statistics_repository(), $this->events()),
             new Retention($views_repository)
         );
 
