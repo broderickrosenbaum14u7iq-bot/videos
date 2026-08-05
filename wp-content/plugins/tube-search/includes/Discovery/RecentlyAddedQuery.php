@@ -65,14 +65,15 @@ final class RecentlyAddedQuery
         $cached = $this->cache->get(self::CACHE_KEY);
 
         if (is_array($cached)) {
-            // The cache round-trips exactly what this method writes below.
-            /** @var list<SearchIndexRow> $cached */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
-            return $cached;
+            // Cached as plain arrays (see SearchIndexRow::to_array()'s docblock for why), decoded back here.
+            /** @var list<array<string, mixed>> $cached */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+            return array_map(SearchIndexRow::from_array(...), $cached);
         }
 
         $result = $this->repository->recently_added($limit);
 
-        $this->cache->set(self::CACHE_KEY, $result, self::CACHE_TTL_SECONDS);
+        $cacheable = array_map(static fn (SearchIndexRow $row): array => $row->to_array(), $result);
+        $this->cache->set(self::CACHE_KEY, $cacheable, self::CACHE_TTL_SECONDS);
 
         return $result;
     }

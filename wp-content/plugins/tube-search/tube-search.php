@@ -44,3 +44,6 @@ add_action(
         \Tube_Search\Plugin::instance()->boot();
     }
 );
+
+register_activation_hook(TUBE_SEARCH_FILE, [\Tube_Search\Plugin::class, 'activate']);
+register_deactivation_hook(TUBE_SEARCH_FILE, [\Tube_Search\Plugin::class, 'deactivate']);

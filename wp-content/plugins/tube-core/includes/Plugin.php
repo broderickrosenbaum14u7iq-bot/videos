@@ -14,7 +14,14 @@ use Tube_Core\CLI\ImportCommand;
 use Tube_Core\CLI\MigrateCommand;
 use Tube_Core\CLI\ViewsCommand;
 use Tube_Core\CLI\WatchHistoryCommand;
+use Tube_Core\Content\Actor;
 use Tube_Core\Content\CategoryTaxonomy;
+use Tube_Core\Content\Repositories\ActorRepository;
+use Tube_Core\Content\Repositories\ActorRepositoryInterface;
+use Tube_Core\Content\Repositories\StudioRepository;
+use Tube_Core\Content\Repositories\StudioRepositoryInterface;
+use Tube_Core\Content\Routing\TermArchiveRouting;
+use Tube_Core\Content\Studio;
 use Tube_Core\Content\TagTaxonomy;
 use Tube_Core\Content\VideoPostType;
 use Tube_Core\Database\SchemaVersionStore;
@@ -116,6 +123,20 @@ final class Plugin
     private ?VideoStatisticsRepositoryInterface $video_statistics_repository = null;
 
     /**
+     * Lazily created by self::actor_repository().
+     *
+     * @var ActorRepositoryInterface|null
+     */
+    private ?ActorRepositoryInterface $actor_repository = null;
+
+    /**
+     * Lazily created by self::studio_repository().
+     *
+     * @var StudioRepositoryInterface|null
+     */
+    private ?StudioRepositoryInterface $studio_repository = null;
+
+    /**
      * Private: use self::instance() instead.
      */
     private function __construct()
@@ -147,6 +168,26 @@ final class Plugin
         add_action('init', [$category_taxonomy, 'register_taxonomy']);
         add_action('init', [$tag_taxonomy, 'register_taxonomy']);
 
+        $actor_routing  = new TermArchiveRouting(
+            'actor',
+            'tube_actor',
+            'archive-actor.php',
+            fn (string $slug): ?Actor => $this->actor_repository()->find_by_slug($slug)
+        );
+        $studio_routing = new TermArchiveRouting(
+            'studio',
+            'tube_studio',
+            'archive-studio.php',
+            fn (string $slug): ?Studio => $this->studio_repository()->find_by_slug($slug)
+        );
+
+        add_action('init', [$actor_routing, 'add_rewrite_rules']);
+        add_action('init', [$studio_routing, 'add_rewrite_rules']);
+        add_filter('query_vars', [$actor_routing, 'register_query_var']);
+        add_filter('query_vars', [$studio_routing, 'register_query_var']);
+        add_filter('template_include', [$actor_routing, 'route_template']);
+        add_filter('template_include', [$studio_routing, 'route_template']);
+
         (new VideoLifecycleEvents($this->events()))->register();
 
         add_action('rest_api_init', [$this, 'register_rest_routes']);
@@ -165,6 +206,16 @@ final class Plugin
         (new VideoPostType())->register_post_type();
         (new CategoryTaxonomy())->register_taxonomy();
         (new TagTaxonomy())->register_taxonomy();
+
+        // The finder closure is never invoked by add_rewrite_rules() itself
+        // -- only route_template() (wired on init, not called here) uses it.
+        // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found -- required by the constructor's Closure signature; add_rewrite_rules() never invokes it.
+        $unused_finder = static function (string $slug): ?object {
+            return null;
+        };
+
+        (new TermArchiveRouting('actor', 'tube_actor', 'archive-actor.php', $unused_finder))->add_rewrite_rules();
+        (new TermArchiveRouting('studio', 'tube_studio', 'archive-studio.php', $unused_finder))->add_rewrite_rules();
 
         SchemaVersionStore::install();
         self::instance()->migration_runner()->migrate_up('tube-core');
@@ -314,6 +365,36 @@ final class Plugin
         }
 
         return $this->video_statistics_repository;
+    }
+
+    /**
+     * The actor repository, per ARCHITECTURE.md §14/§12 Phase 8.
+     *
+     * Public: `tube-search`'s `VideoIndexer` calls
+     * `self::actor_ids_for_video()` to keep the search index's
+     * `actor_ids` column in sync; `includes/template-tags.php`'s
+     * `tube_core_get_actor_by_slug()` is a thin wrapper around
+     * `self::find_by_slug()`.
+     */
+    public function actor_repository(): ActorRepositoryInterface
+    {
+        if (null === $this->actor_repository) {
+            $this->actor_repository = new ActorRepository();
+        }
+
+        return $this->actor_repository;
+    }
+
+    /**
+     * The studio repository, per ARCHITECTURE.md §14/§12 Phase 8. Same shape as self::actor_repository().
+     */
+    public function studio_repository(): StudioRepositoryInterface
+    {
+        if (null === $this->studio_repository) {
+            $this->studio_repository = new StudioRepository();
+        }
+
+        return $this->studio_repository;
     }
 
     /**

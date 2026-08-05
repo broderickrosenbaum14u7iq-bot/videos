@@ -1,0 +1,115 @@
+/* Tube Theme: minimal base layout. No design system — just enough for a legible grid/card/single-video layout. */
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	font-family: system-ui, sans-serif;
+	color: #1a1a1a;
+	background: #fff;
+}
+
+a {
+	color: inherit;
+}
+
+.site-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	padding: 1rem;
+	border-bottom: 1px solid #e5e5e5;
+}
+
+.site-header__home {
+	font-weight: 700;
+	font-size: 1.25rem;
+	text-decoration: none;
+}
+
+.site-main {
+	max-width: 1200px;
+	margin: 0 auto;
+	padding: 1rem;
+}
+
+.site-footer {
+	padding: 1rem;
+	text-align: center;
+	color: #666;
+	border-top: 1px solid #e5e5e5;
+}
+
+.breadcrumbs {
+	font-size: 0.85rem;
+	color: #666;
+	margin-bottom: 1rem;
+}
+
+.breadcrumbs a {
+	text-decoration: none;
+}
+
+.video-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+	gap: 1rem;
+}
+
+.video-card {
+	display: block;
+	text-decoration: none;
+}
+
+.video-card img {
+	width: 100%;
+	height: auto;
+	border-radius: 4px;
+}
+
+.video-card__title {
+	margin: 0.5rem 0 0.25rem;
+	font-size: 0.95rem;
+	font-weight: 600;
+	color: #1a1a1a;
+}
+
+.video-card__meta {
+	font-size: 0.8rem;
+	color: #666;
+}
+
+.pagination {
+	display: flex;
+	gap: 0.5rem;
+	margin-top: 1.5rem;
+}
+
+.pagination a,
+.pagination span {
+	padding: 0.4rem 0.75rem;
+	border: 1px solid #e5e5e5;
+	border-radius: 4px;
+	text-decoration: none;
+}
+
+.pagination .current {
+	background: #1a1a1a;
+	color: #fff;
+}
+
+.video-single__title {
+	margin: 1rem 0 0.5rem;
+}
+
+.video-single__meta {
+	color: #666;
+	margin-bottom: 1rem;
+}
+
+.section-heading {
+	margin: 2rem 0 1rem;
+}

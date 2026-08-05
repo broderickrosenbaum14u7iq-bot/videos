@@ -46,4 +46,53 @@ final class SearchIndexRow
         public readonly ?string $published_at
     ) {
     }
+
+    /**
+     * Convert to a plain array — the shape cached through
+     * `SearchCacheInterface`. `Tube_Cache\Cache\RedisCache` unserializes
+     * with `allowed_classes: false` (an object-injection guard), which
+     * would otherwise turn a cached `SearchIndexRow` back into a broken
+     * `__PHP_Incomplete_Class` instead of a usable object — every
+     * discovery query class caches the array form via this method and
+     * `self::from_array()` instead.
+     *
+     * @return array<string, mixed>
+     */
+    public function to_array(): array
+    {
+        return [
+            'video_id'         => $this->video_id,
+            'title'            => $this->title,
+            'description'      => $this->description,
+            'category_ids'     => $this->category_ids,
+            'tag_ids'          => $this->tag_ids,
+            'actor_ids'        => $this->actor_ids,
+            'studio_ids'       => $this->studio_ids,
+            'duration_seconds' => $this->duration_seconds,
+            'views_total'      => $this->views_total,
+            'published_at'     => $this->published_at,
+        ];
+    }
+
+    /**
+     * Reconstruct from self::to_array()'s shape.
+     *
+     * @param array<string, mixed> $data As returned by self::to_array().
+     */
+    public static function from_array(array $data): self
+    {
+        /** @var array{video_id: int, title: string, description: string|null, category_ids: int[], tag_ids: int[], actor_ids: int[], studio_ids: int[], duration_seconds: int|null, views_total: int, published_at: string|null} $data */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+        return new self(
+            $data['video_id'],
+            $data['title'],
+            $data['description'],
+            $data['category_ids'],
+            $data['tag_ids'],
+            $data['actor_ids'],
+            $data['studio_ids'],
+            $data['duration_seconds'],
+            $data['views_total'],
+            $data['published_at']
+        );
+    }
 }

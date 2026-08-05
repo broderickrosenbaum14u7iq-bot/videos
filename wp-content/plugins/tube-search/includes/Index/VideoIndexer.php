@@ -29,6 +29,13 @@ use WP_Post;
  * because `tube_core.video.updated` fires on *every* save, not just
  * published ones (a draft edit fires it too), and because a previously-
  * published video can be unpublished later.
+ * `actor_ids`/`studio_ids` are read fresh from tube-core's
+ * `ActorRepositoryInterface::actor_ids_for_video()`/
+ * `StudioRepositoryInterface::studio_ids_for_video()` on every resync,
+ * the same "always read the current real relationship, never trust what
+ * was last written" treatment `category_ids`/`tag_ids` already get from
+ * `wp_get_post_terms()`, per ARCHITECTURE.md §14's dedicated-table
+ * design for actor/studio.
  *
  * WordPress/tube-core-coupled throughout (`get_post()`,
  * `wp_get_post_terms()`, `Tube_Core\Plugin::instance()`) — verified via
@@ -106,8 +113,8 @@ final class VideoIndexer
             self::description_for($post),
             self::term_ids($video_id, self::CATEGORY_TAXONOMY),
             self::term_ids($video_id, self::TAG_TAXONOMY),
-            $existing->actor_ids ?? [],
-            $existing->studio_ids ?? [],
+            Tube_Core_Plugin::instance()->actor_repository()->actor_ids_for_video($video_id),
+            Tube_Core_Plugin::instance()->studio_repository()->studio_ids_for_video($video_id),
             $metadata?->duration_seconds,
             $existing->views_total ?? 0,
             $post->post_date_gmt

@@ -108,6 +108,9 @@
                 <element value="tube_cache"/>
                 <element value="TUBE_CACHE"/>
                 <element value="Tube_Cache"/>
+                <element value="tube_theme"/>
+                <element value="TUBE_THEME"/>
+                <element value="Tube_Theme"/>
             </property>
         </properties>
     </rule>

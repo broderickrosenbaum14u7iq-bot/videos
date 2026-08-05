@@ -115,6 +115,49 @@ final class IndexSyncIntegrationTest extends TestCase
     }
 
     /**
+     * A real wp_tube_video_actors assignment is picked up on resync — the
+     * gap this phase fixed (VideoIndexer previously only preserved
+     * whatever actor_ids the index already had, never reading the real
+     * relationship table).
+     */
+    public function test_actor_assignment_is_picked_up_on_resync(): void
+    {
+        $video_id = $this->create_published_video('Actor Sync Test Video');
+        $actor_id = $this->create_actor();
+
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API.
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- test seeding against a dedicated custom table with no write API yet (Phase 10).
+        $wpdb->insert(
+            $wpdb->prefix . 'tube_video_actors',
+            [
+                'video_id' => $video_id,
+                'actor_id' => $actor_id,
+            ],
+            ['%d', '%d']
+        );
+
+        // wp_tube_video_actors alone doesn't fire a resync; re-save the post to trigger one.
+        wp_update_post(
+            [
+                'ID'         => $video_id,
+                'post_title' => 'Actor Sync Test Video',
+            ]
+        );
+
+        $row = Tube_Search_Plugin::instance()->search_index_repository()->find($video_id);
+
+        self::assertNotNull($row);
+        self::assertSame([$actor_id], $row->actor_ids);
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- test cleanup against a dedicated custom table.
+        $wpdb->delete($wpdb->prefix . 'tube_video_actors', ['actor_id' => $actor_id], ['%d']);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- test cleanup against a dedicated custom table.
+        $wpdb->delete($wpdb->prefix . 'tube_actors', ['id' => $actor_id], ['%d']);
+    }
+
+    /**
      * Create a real published video post, tracked for teardown.
      *
      * @param string $title The post title.
@@ -151,5 +194,30 @@ final class IndexSyncIntegrationTest extends TestCase
         $this->created_term_ids[] = $term_id;
 
         return $term_id;
+    }
+
+    /**
+     * Create a real wp_tube_actors row (no write API exists yet — Phase 10 — so this seeds directly).
+     */
+    private function create_actor(): int
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API.
+
+        $now = current_time('mysql', true);
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- test seeding against a dedicated custom table with no write API yet (Phase 10).
+        $wpdb->insert(
+            $wpdb->prefix . 'tube_actors',
+            [
+                'name'       => 'Index Sync Test Actor',
+                'slug'       => 'index-sync-test-actor-' . uniqid('', true),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            ['%s', '%s', '%s', '%s']
+        );
+
+        return (int) $wpdb->insert_id;
     }
 }

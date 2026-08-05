@@ -91,4 +91,31 @@ interface DiscoveryRepositoryInterface
      * @return list<SearchIndexRow> Most relevant first.
      */
     public function search(string $query, int $limit, int $offset): array;
+
+    /**
+     * Find videos whose `$column` JSON array contains `$id`, paginated —
+     * the category/tag/actor/studio archive listing query
+     * `Tube_Search\Discovery\ArchiveVideosQuery` uses. Unlike
+     * self::find_by_ids(), this takes a single ID (one archive page is
+     * always for exactly one category/tag/actor/studio), supports a real
+     * `$offset`, and orders by publish date rather than view count — an
+     * archive page is a chronological listing, not a relevance-ranked one.
+     *
+     * @param CandidateColumn $column Which JSON-array column to match against.
+     * @param int             $id     The category/tag/actor/studio ID a row must contain.
+     * @param int             $limit  Maximum number of rows to return.
+     * @param int             $offset How many matching rows to skip (pagination).
+     *
+     * @return list<SearchIndexRow> Most recently published first.
+     */
+    public function list_by_column(CandidateColumn $column, int $id, int $limit, int $offset): array;
+
+    /**
+     * The total number of videos whose `$column` JSON array contains
+     * `$id` — the pagination-metadata companion to self::list_by_column().
+     *
+     * @param CandidateColumn $column Which JSON-array column to match against.
+     * @param int             $id     The category/tag/actor/studio ID a row must contain.
+     */
+    public function count_by_column(CandidateColumn $column, int $id): int;
 }

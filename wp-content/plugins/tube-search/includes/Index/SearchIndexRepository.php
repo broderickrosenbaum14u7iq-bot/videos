@@ -442,6 +442,85 @@ final class SearchIndexRepository implements SearchIndexRepositoryInterface, Dis
     }
 
     /**
+     * {@inheritDoc}
+     *
+     * @param CandidateColumn $column Which JSON-array column to match against.
+     * @param int             $id     The category/tag/actor/studio ID a row must contain.
+     * @param int             $limit  Maximum number of rows to return.
+     * @param int             $offset How many matching rows to skip (pagination).
+     *
+     * @return list<SearchIndexRow>
+     *
+     * @throws RuntimeException If the query template is malformed (a bug in this method, not in any argument).
+     */
+    public function list_by_column(CandidateColumn $column, int $id, int $limit, int $offset): array
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        $column_name = $column->value;
+
+        $sql = $wpdb->prepare(
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared -- self::COLUMNS is a fixed internal constant; $column_name is a closed CandidateColumn enum value. Neither is ever external input, and every actual value is still a %i/%s/%d-bound argument below.
+            'SELECT ' . self::COLUMNS . " FROM %i WHERE JSON_CONTAINS({$column_name}, %s)"
+                . ' ORDER BY published_at DESC LIMIT %d OFFSET %d',
+            $wpdb->prefix . 'tube_search_index',
+            (string) $id,
+            $limit,
+            $offset
+        );
+
+        if (null === $sql) {
+            throw new RuntimeException(
+                'wpdb::prepare() returned null for the list_by_column() query in ' . self::class . '.'
+            );
+        }
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- dedicated custom table (§2.5, §11); $sql *is* $wpdb->prepare()'d above.
+        $rows = $wpdb->get_results($sql, ARRAY_A);
+
+        // Same documented wordpress-stubs gap as VideoViewsRepository::window_sums().
+        /** @var array<int, array<string, string|null>> $rows */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+        $rows = (array) $rows;
+
+        return self::hydrate_all($rows);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param CandidateColumn $column Which JSON-array column to match against.
+     * @param int             $id     The category/tag/actor/studio ID a row must contain.
+     *
+     * @throws RuntimeException If the query template is malformed (a bug in this method, not in any argument).
+     */
+    public function count_by_column(CandidateColumn $column, int $id): int
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        $column_name = $column->value;
+
+        $sql = $wpdb->prepare(
+            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared -- $column_name is a closed CandidateColumn enum value, never external input; the actual value is still a %i/%s-bound argument below.
+            "SELECT COUNT(*) FROM %i WHERE JSON_CONTAINS({$column_name}, %s)",
+            $wpdb->prefix . 'tube_search_index',
+            (string) $id
+        );
+
+        if (null === $sql) {
+            throw new RuntimeException(
+                'wpdb::prepare() returned null for the count_by_column() query in ' . self::class . '.'
+            );
+        }
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- dedicated custom table (§2.5, §11); $sql *is* $wpdb->prepare()'d above.
+        $count = $wpdb->get_var($sql);
+
+        return null === $count ? 0 : (int) $count;
+    }
+
+    /**
      * Turn every row in a result set into a SearchIndexRow.
      *
      * @param array<int, array<string, string|null>> $rows Raw $wpdb rows.

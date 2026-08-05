@@ -21,6 +21,8 @@
 
 declare(strict_types=1);
 
+use Tube_Search\Discovery\ArchivePage;
+use Tube_Search\Index\CandidateColumn;
 use Tube_Search\Index\SearchIndexRow;
 use Tube_Search\Plugin as Tube_Search_Plugin;
 
@@ -97,4 +99,88 @@ function tube_search_query(array $args): array
     $per_page = $args['per_page'] ?? 20;
 
     return Tube_Search_Plugin::instance()->search_query()->search($query, $page, $per_page);
+}
+
+/**
+ * The raw query text for the current `/search/{query}/` request, per
+ * ARCHITECTURE.md §15.1 — resolved by
+ * `Tube_Search\Search\SearchRouting::route_template()`, read here via
+ * WordPress's own `get_query_var()` mechanism (the same pattern
+ * `tube-core`'s `tube_core_get_current_actor()` already establishes).
+ *
+ * @return string The query text, or '' outside a search results request.
+ */
+function tube_search_current_query(): string
+{
+    $query = get_query_var('tube_search_q');
+
+    return is_string($query) ? $query : '';
+}
+
+/**
+ * One page of a category archive listing, per ARCHITECTURE.md §15.1.
+ *
+ * @param int $term_id  The `video_category` term ID.
+ * @param int $page     Which page of results to return (1-indexed).
+ * @param int $per_page Results per page.
+ */
+function tube_search_by_category(int $term_id, int $page = 1, int $per_page = 24): ArchivePage
+{
+    return Tube_Search_Plugin::instance()->archive_videos_query()->get(
+        CandidateColumn::CategoryIds,
+        $term_id,
+        $page,
+        $per_page
+    );
+}
+
+/**
+ * One page of a tag archive listing, per ARCHITECTURE.md §15.1.
+ *
+ * @param int $term_id  The `video_tag` term ID.
+ * @param int $page     Which page of results to return (1-indexed).
+ * @param int $per_page Results per page.
+ */
+function tube_search_by_tag(int $term_id, int $page = 1, int $per_page = 24): ArchivePage
+{
+    return Tube_Search_Plugin::instance()->archive_videos_query()->get(
+        CandidateColumn::TagIds,
+        $term_id,
+        $page,
+        $per_page
+    );
+}
+
+/**
+ * One page of an actor archive listing, per ARCHITECTURE.md §15.1.
+ *
+ * @param int $actor_id The actor's row ID (`Tube_Core\Content\Actor::$id`).
+ * @param int $page     Which page of results to return (1-indexed).
+ * @param int $per_page Results per page.
+ */
+function tube_search_by_actor(int $actor_id, int $page = 1, int $per_page = 24): ArchivePage
+{
+    return Tube_Search_Plugin::instance()->archive_videos_query()->get(
+        CandidateColumn::ActorIds,
+        $actor_id,
+        $page,
+        $per_page
+    );
+}
+
+/**
+ * One page of a studio archive listing, per ARCHITECTURE.md §15.1.
+ *
+ * @param int $studio_id The studio's row ID (`Tube_Core\Content\Studio::$id`).
+ * @param int $page      Which page of results to return (1-indexed).
+ * @param int $per_page  Results per page.
+ */
+function tube_search_by_studio(int $studio_id, int $page = 1, int $per_page = 24): ArchivePage
+{
+    return Tube_Search_Plugin::instance()->archive_videos_query()->get(
+        CandidateColumn::StudioIds,
+        $studio_id,
+        $page,
+        $per_page
+    );
 }

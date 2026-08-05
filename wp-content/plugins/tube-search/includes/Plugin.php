@@ -13,6 +13,7 @@ use Tube_Core\Plugin as Tube_Core_Plugin;
 use Tube_Search\Cache\SearchCacheInterface;
 use Tube_Search\Cache\TubeCacheAdapter;
 use Tube_Search\CLI\IndexCommand;
+use Tube_Search\Discovery\ArchiveVideosQuery;
 use Tube_Search\Discovery\PopularVideosQuery;
 use Tube_Search\Discovery\RecentlyAddedQuery;
 use Tube_Search\Discovery\RelatedVideosFinder;
@@ -21,6 +22,7 @@ use Tube_Search\Events\SearchIndexSyncSubscriber;
 use Tube_Search\Index\SearchIndexRepository;
 use Tube_Search\Index\VideoIndexer;
 use Tube_Search\Search\SearchQuery;
+use Tube_Search\Search\SearchRouting;
 use Tube_Search\SchemaMigrations\Migration001CreateSearchIndexTable;
 use WP_CLI;
 
@@ -31,14 +33,14 @@ use WP_CLI;
  * composition-root shape `Tube_Core\Plugin`/`Tube_Cache\Plugin`/
  * `Tube_Player\Plugin` already use.
  *
- * 8 lazy accessors total (5 public, 3 private) — at, not past,
- * ARCHITECTURE.md §19.2's 6–8-accessor reconsideration trigger. Flagged
- * explicitly rather than silently: every one of them is still
- * construct-or-return-cached, nothing more, so this class stays wiring-
- * only per §19.2's own actual test ("if Plugin.php starts containing
- * real logic instead of wiring, that's the signal to extract") — not
- * because 8 is comfortably under the number, but because none of them
- * do anything besides `new` + cache. See `PHASE-7.md`.
+ * 9 lazy accessors total (6 public, 3 private) — past ARCHITECTURE.md
+ * §19.2's 6–8-accessor reconsideration trigger as of Phase 8's
+ * `archive_videos_query()` addition. Reconsidered, not just flagged: per
+ * §19.2's own actual test, a service container is warranted only once
+ * "a single plugin's bootstrap class... starts containing real logic
+ * beyond construction/wiring" — every accessor here, including the new
+ * one, is still exactly `new` + cache, nothing more, so that condition
+ * still isn't met and a container remains the wrong call. See `PHASE-8.md`.
  */
 final class Plugin
 {
@@ -106,6 +108,13 @@ final class Plugin
     private ?SearchQuery $search_query = null;
 
     /**
+     * Lazily created by self::archive_videos_query().
+     *
+     * @var ArchiveVideosQuery|null
+     */
+    private ?ArchiveVideosQuery $archive_videos_query = null;
+
+    /**
      * Private: use self::instance() instead.
      */
     private function __construct()
@@ -136,7 +145,33 @@ final class Plugin
 
         $this->sync_subscriber()->register();
 
+        $search_routing = new SearchRouting();
+
+        add_action('init', [$search_routing, 'add_rewrite_rules']);
+        add_filter('query_vars', [$search_routing, 'register_query_var']);
+        add_filter('template_include', [$search_routing, 'route_template']);
+
         $this->register_cli_commands();
+    }
+
+    /**
+     * Plugin activation: register the `/search/{query}/` rewrite rule
+     * synchronously (so it exists before the flush below), then flush
+     * rewrite rules — the same pattern `Tube_Core\Plugin::activate()` uses.
+     */
+    public static function activate(): void
+    {
+        (new SearchRouting())->add_rewrite_rules();
+
+        flush_rewrite_rules();
+    }
+
+    /**
+     * Plugin deactivation.
+     */
+    public static function deactivate(): void
+    {
+        flush_rewrite_rules();
     }
 
     /**
@@ -253,6 +288,21 @@ final class Plugin
         }
 
         return $this->search_query;
+    }
+
+    /**
+     * The category/tag/actor/studio archive-listing query, per ARCHITECTURE.md §15.1/§12 Phase 8.
+     *
+     * Public: `includes/template-tags.php`'s `tube_search_by_category()`/
+     * `tube_search_by_tag()`/`tube_search_by_actor()`/`tube_search_by_studio()` all wrap this.
+     */
+    public function archive_videos_query(): ArchiveVideosQuery
+    {
+        if (null === $this->archive_videos_query) {
+            $this->archive_videos_query = new ArchiveVideosQuery($this->search_index_repository(), $this->cache());
+        }
+
+        return $this->archive_videos_query;
     }
 
     /**

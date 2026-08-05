@@ -34,6 +34,8 @@ if (file_exists(TUBE_CORE_DIR . '/vendor/autoload.php')) {
     require_once TUBE_CORE_DIR . '/vendor/autoload.php';
 }
 
+require_once TUBE_CORE_DIR . '/includes/template-tags.php';
+
 add_action(
     'plugins_loaded',
     static function (): void {

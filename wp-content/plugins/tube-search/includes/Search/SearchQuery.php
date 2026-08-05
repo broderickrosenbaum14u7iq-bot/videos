@@ -78,15 +78,16 @@ final class SearchQuery
         $cached    = $this->cache->get($cache_key);
 
         if (is_array($cached)) {
-            // The cache round-trips exactly what this method writes below.
-            /** @var list<SearchIndexRow> $cached */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
-            return $cached;
+            // Cached as plain arrays (see SearchIndexRow::to_array()'s docblock for why), decoded back here.
+            /** @var list<array<string, mixed>> $cached */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+            return array_map(SearchIndexRow::from_array(...), $cached);
         }
 
         $offset = ($page - 1) * $per_page;
         $result = $this->repository->search($query, $per_page, $offset);
 
-        $this->cache->set($cache_key, $result, self::CACHE_TTL_SECONDS);
+        $cacheable = array_map(static fn (SearchIndexRow $row): array => $row->to_array(), $result);
+        $this->cache->set($cache_key, $cacheable, self::CACHE_TTL_SECONDS);
 
         return $result;
     }

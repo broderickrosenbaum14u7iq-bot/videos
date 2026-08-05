@@ -15,5 +15,8 @@
         "psr-4": {
             "Tube_Seo\\Tests\\": "tests/"
         }
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6 || ^10.5"
     }
 }

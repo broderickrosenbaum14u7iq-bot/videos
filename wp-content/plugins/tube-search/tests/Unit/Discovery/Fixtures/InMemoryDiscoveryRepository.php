@@ -200,6 +200,58 @@ final class InMemoryDiscoveryRepository implements DiscoveryRepositoryInterface
     }
 
     /**
+     * {@inheritDoc}
+     *
+     * @param CandidateColumn $column Which JSON-array column to match against.
+     * @param int             $id     The ID a row must contain.
+     * @param int             $limit  Maximum number of rows to return.
+     * @param int             $offset How many matching rows to skip.
+     *
+     * @return list<SearchIndexRow>
+     */
+    public function list_by_column(CandidateColumn $column, int $id, int $limit, int $offset): array
+    {
+        $matches = [];
+
+        foreach ($this->rows as $row) {
+            if (in_array($id, $this->column_values($row, $column), true)) {
+                $matches[] = $row;
+            }
+        }
+
+        usort(
+            $matches,
+            static function (SearchIndexRow $a, SearchIndexRow $b): int {
+                $a_published_at = (string) $a->published_at;
+                $b_published_at = (string) $b->published_at;
+
+                return strcmp($b_published_at, $a_published_at);
+            }
+        );
+
+        return array_slice($matches, $offset, $limit);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param CandidateColumn $column Which JSON-array column to match against.
+     * @param int             $id     The ID a row must contain.
+     */
+    public function count_by_column(CandidateColumn $column, int $id): int
+    {
+        $count = 0;
+
+        foreach ($this->rows as $row) {
+            if (in_array($id, $this->column_values($row, $column), true)) {
+                ++$count;
+            }
+        }
+
+        return $count;
+    }
+
+    /**
      * Read the value of one candidate column from a row.
      *
      * @param SearchIndexRow  $row    The row to read from.
