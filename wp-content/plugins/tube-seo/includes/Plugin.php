@@ -9,11 +9,19 @@ declare(strict_types=1);
 
 namespace Tube_Seo;
 
+use Tube_Seo\CLI\SitemapCommand;
 use Tube_Seo\Head\SeoHead;
+use Tube_Seo\Sitemap\PublishedVideoRepository;
+use Tube_Seo\Sitemap\SitemapGenerator;
+use Tube_Seo\Sitemap\SitemapRouting;
+use Tube_Seo\Sitemap\SitemapXmlBuilder;
+use WP_CLI;
 
 /**
- * Tube SEO's bootstrap — a single lazy accessor for `SeoHead`, the
- * composition-root shape every other tube-* plugin already uses.
+ * Tube SEO's bootstrap — the composition-root shape every other tube-*
+ * plugin already uses: lazy accessors for `SeoHead` and
+ * `SitemapGenerator`, hook wiring in `boot()`, and `activate()`/
+ * `deactivate()` for the sitemap route's rewrite rule.
  */
 final class Plugin
 {
@@ -30,6 +38,13 @@ final class Plugin
      * @var SeoHead|null
      */
     private ?SeoHead $head = null;
+
+    /**
+     * Lazily created by self::sitemap_generator().
+     *
+     * @var SitemapGenerator|null
+     */
+    private ?SitemapGenerator $sitemap_generator = null;
 
     /**
      * Private: use self::instance() instead.
@@ -53,15 +68,47 @@ final class Plugin
     /**
      * Wire up hooks. Called on `plugins_loaded`.
      *
-     * Empty: unlike every other tube-* plugin, tube-seo has nothing to
-     * self-hook — `tube_seo_head()` is called explicitly by the theme
-     * inside `<head>`, not triggered by a WordPress action. Kept for
-     * consistency with the composition-root shape every other plugin
-     * uses, and as the place a future hook-driven concern (e.g. sitemap
-     * generation, Phase 9's remaining scope) would be wired.
+     * `tube_seo_head()` itself stays a plain function call from the theme
+     * (not hook-driven — see `head()`'s own docblock), but the sitemap
+     * route needs its rewrite rule/query var/`template_redirect` handler
+     * registered on every request, the same way `Tube_Core\Content\
+     * Routing\TermArchiveRouting`/`Tube_Search\Search\SearchRouting` wire
+     * themselves in their own plugins' `boot()`.
      */
     public function boot(): void
     {
+        $routing = new SitemapRouting();
+
+        add_action('init', [$routing, 'add_rewrite_rules']);
+        add_filter('query_vars', [$routing, 'register_query_var']);
+        // Priority 1: WordPress core's own redirect_canonical() runs on
+        // template_redirect at the default priority (10) and would
+        // 301-redirect a slash-less, non-post-type URL like
+        // /video-sitemap.xml to /video-sitemap.xml/ before this class
+        // ever got a chance to serve it — confirmed live. Running first
+        // and exit()ing on a real match sidesteps that entirely.
+        add_action('template_redirect', [$routing, 'maybe_serve'], 1);
+
+        $this->register_cli_commands();
+    }
+
+    /**
+     * Register this plugin's rewrite rule and flush it, so the sitemap
+     * route works immediately without a manual `wp rewrite flush`.
+     */
+    public static function activate(): void
+    {
+        (new SitemapRouting())->add_rewrite_rules();
+
+        flush_rewrite_rules();
+    }
+
+    /**
+     * Flush rewrite rules on deactivation, so this plugin's route doesn't linger.
+     */
+    public static function deactivate(): void
+    {
+        flush_rewrite_rules();
     }
 
     /**
@@ -76,5 +123,31 @@ final class Plugin
         }
 
         return $this->head;
+    }
+
+    /**
+     * The video sitemap generator.
+     */
+    public function sitemap_generator(): SitemapGenerator
+    {
+        if (null === $this->sitemap_generator) {
+            $this->sitemap_generator = new SitemapGenerator(new PublishedVideoRepository(), new SitemapXmlBuilder());
+        }
+
+        return $this->sitemap_generator;
+    }
+
+    /**
+     * Register this plugin's WP-CLI commands, if WP-CLI is the current runtime.
+     */
+    private function register_cli_commands(): void
+    {
+        if (! defined('WP_CLI') || ! WP_CLI) {
+            return;
+        }
+
+        $sitemap_command = new SitemapCommand($this->sitemap_generator());
+
+        WP_CLI::add_command('tube-seo sitemap:generate', [$sitemap_command, 'generate']);
     }
 }

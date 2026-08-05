@@ -135,3 +135,25 @@ Measured 2026-08-05 against the local Docker staging environment, stack already 
 **The two page-generation-time increases are this phase's real, intended cost** — Phase 8's entire deliverable is a real theme rendering real data instead of an empty placeholder, so an increase here is the correct outcome, not a regression to explain away. ~5–6 ms for a fully-rendered video page (SEO head, breadcrumbs, embed block, 12 related videos) or homepage (three discovery-query rows) is well within budget for the 3,000–10,000-video, single-VPS target this phase was built against, and is consistent with the SQL-count investigation already documented in this phase's Implementation Review (§ below): both pages issue a small, bounded, now-correctly-cached number of queries, not an unbounded or N+1 one.
 
 Every other metric is either unchanged from Phase 5 or explained by a change from an *earlier* phase (Phase 7's second migration source, Phase 3/7's `VIDEO_UPDATED` subscribers) that simply hadn't been measured yet because Phase 6 and 7 both skipped their own reports. Import throughput, cache hit/miss counts, and REST latency are all unaffected, as expected — none of that code changed this phase.
+
+## Phase 9 (tube-seo: video XML sitemap generation)
+
+Measured 2026-08-05 against the local Docker staging environment, stack already warm, immediately after Phase 9's Implementation Review and before its commit. Three consecutive runs of `ops/benchmark/run.sh`, same methodology as every prior phase.
+
+| Metric | Result | Notes |
+|---|---|---|
+| PHP memory usage | **53.313 MB** peak, identical across all 3 runs | Unchanged from Phase 8 — expected: `MigrationRunner::status()` bootstraps the same six plugins' autoloaders either way; Phase 9 registers no new migration source |
+| Execution time | **0.918–1.55 ms** | Same order of magnitude as Phase 8's 0.972–2.09 ms |
+| SQL query count | **2 queries**, identical across all 3 runs | Unchanged from Phase 8 — expected, Phase 9 adds no new migration source |
+| Cache hits | **1,000** | Unchanged methodology and result from every prior phase |
+| Cache misses | **1,000** | Same as above |
+| REST latency | **12.14–19.83 ms** | Consistent with Phase 8's 11.95–21.65 ms — unaffected, as expected: this endpoint doesn't route through any of Phase 9's code |
+| Page generation time | **11.29–13.24 ms** (`/watch/test-video-one/`), **11.09–11.63 ms** (`/`) | Consistent with Phase 8's 11.24–13.75 ms / 11.71–12.21 ms — **unaffected, as expected**: neither URL routes through `SitemapRouting` (its `template_redirect` handler at priority 1 returns immediately once `get_query_var('tube_seo_sitemap_file')` is empty, before any file I/O), and neither renders sitemap data |
+| Import throughput | **1,169.74–1,217.91 items/second** | Consistent with Phase 8's 1,088.05–1,202.96 items/second — unaffected, as expected: Phase 9 doesn't touch the import pipeline |
+| Event dispatch cost | **96.02–100.62 ms total for 1,000 dispatches** (≈0.096–0.101 ms per dispatch) | Consistent with Phase 8's 98.60–103.24 ms — unaffected, as expected: Phase 9 adds no `VIDEO_UPDATED` (or any) event subscriber, per this phase's own documented decision not to build one (see `PHASE-9.md`) |
+
+### Reading these numbers
+
+Phase 9's own deliverable — sitemap generation and file serving — is deliberately **not** one of this harness's tracked metrics; it runs via WP-CLI/cron, not a page request the standard benchmark set covers. Its actual performance was instead verified directly during live verification (`PHASE-9.md`): generation completes in a single `$wpdb` query for the published-video set, one batched `_prime_post_caches()` call, one batched `VideoMetadataRepositoryInterface::find_many()` call, and one `wp_upload_dir()`-relative file write per shard — a small, fixed number of queries regardless of video count, not one-per-video, at this project's 3,000–10,000-video target scale.
+
+Every tracked metric here is unchanged from Phase 8 within normal run-to-run noise, confirming Phase 9's changes — a new `tube-seo` subsystem plus one new `VideoMetadataRepository::find_many()` method — don't regress any existing request path. `find_many()` is additive (a new method; `find()`'s existing behavior is untouched) and is never called during a normal page render, only during sitemap generation.

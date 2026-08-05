@@ -55,6 +55,19 @@ interface VideoMetadataRepositoryInterface
     public function find(int $video_id): ?VideoMetadata;
 
     /**
+     * Fetch the full stored metadata for several videos in one query —
+     * the batch read `tube-seo`'s sitemap generator (Phase 9) uses to
+     * avoid one query per video across a 3,000–10,000-video catalog.
+     * `find()` stays the single-row read path (`tube-player`'s per-card
+     * rendering, Phase 6/8) — a real, distinct caller, not a duplicate.
+     *
+     * @param int[] $video_ids The video post IDs to fetch.
+     *
+     * @return array<int, VideoMetadata> Keyed by video ID. A video with no metadata row is simply absent.
+     */
+    public function find_many(array $video_ids): array;
+
+    /**
      * Find the video a Cloudflare Stream UID belongs to.
      *
      * Used two ways: `VideoImporter` calls this for duplicate detection

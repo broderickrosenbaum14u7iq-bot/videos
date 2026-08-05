@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace Tube_Core\Video\Repositories;
 
+use RuntimeException;
 use Tube_Core\Video\CfStreamStatus;
 use Tube_Core\Video\VideoMetadata;
 
@@ -80,6 +81,75 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
 
         /** @var array{video_id: string, cf_stream_uid: string, cf_status: string, duration_seconds: string|null, thumbnail_time_seconds: string, poster_image_id: string|null, og_image_id: string|null} $row */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
 
+        return self::hydrate($row);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int[] $video_ids The video post IDs to fetch.
+     *
+     * @return array<int, VideoMetadata>
+     *
+     * @throws RuntimeException If the query template is malformed (a bug in this method, not in any argument).
+     */
+    public function find_many(array $video_ids): array
+    {
+        if ([] === $video_ids) {
+            return [];
+        }
+
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        $placeholders = implode(', ', array_fill(0, count($video_ids), '%d'));
+
+        $sql = $wpdb->prepare(
+            'SELECT video_id, cf_stream_uid, cf_status, duration_seconds, thumbnail_time_seconds,'
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared -- $placeholders is a fixed-shape string of literal "%d" tokens (one per element of $video_ids), never external input, and every actual value is still a %i/%d-bound argument below.
+                . " poster_image_id, og_image_id FROM %i WHERE video_id IN ({$placeholders})",
+            array_merge([$wpdb->prefix . 'tube_video_metadata'], $video_ids)
+        );
+
+        if (null === $sql) {
+            throw new RuntimeException(
+                'wpdb::prepare() returned null for the find_many() query in ' . self::class . '.'
+            );
+        }
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- dedicated custom table (§2.5, §11); $sql *is* $wpdb->prepare()'d above.
+        $rows = $wpdb->get_results($sql, ARRAY_A);
+
+        /** @var array<int, array{video_id: string, cf_stream_uid: string, cf_status: string, duration_seconds: string|null, thumbnail_time_seconds: string, poster_image_id: string|null, og_image_id: string|null}> $rows */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+        $rows = (array) $rows;
+
+        $result = [];
+
+        foreach ($rows as $row) {
+            $metadata                      = self::hydrate($row);
+            $result[ $metadata->video_id ] = $metadata;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Turn one raw $wpdb row into a VideoMetadata.
+     *
+     * @param array<string, string|null> $row One raw $wpdb row.
+     *
+     * @phpstan-param array{
+     *     video_id: string,
+     *     cf_stream_uid: string,
+     *     cf_status: string,
+     *     duration_seconds: string|null,
+     *     thumbnail_time_seconds: string,
+     *     poster_image_id: string|null,
+     *     og_image_id: string|null
+     * } $row
+     */
+    private static function hydrate(array $row): VideoMetadata
+    {
         return new VideoMetadata(
             (int) $row['video_id'],
             $row['cf_stream_uid'],

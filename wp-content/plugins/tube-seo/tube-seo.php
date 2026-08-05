@@ -16,8 +16,11 @@
  * OpenGraph/Twitter Card tags, plus JSON-LD (`VideoObject`,
  * `BreadcrumbList`, `CollectionPage`) — ARCHITECTURE.md §12 Phase 8's
  * pulled-forward SEO scope (the deliverable ARCHITECTURE.md §12
- * otherwise assigns to Phase 9). Video sitemap generation stays
- * deferred — not part of this phase's explicit SEO deliverable list.
+ * otherwise assigns to Phase 9).
+ *
+ * Phase 9: video XML sitemap generation (`wp tube-seo sitemap:generate`),
+ * served at clean URLs (`/video-sitemap.xml`, sharded/indexed above
+ * ~40,000 videos) — ARCHITECTURE.md §7/§12's remaining Phase 9 scope.
  *
  * @package Tube_Seo
  */
@@ -44,3 +47,6 @@ add_action(
         \Tube_Seo\Plugin::instance()->boot();
     }
 );
+
+register_activation_hook(TUBE_SEO_FILE, [\Tube_Seo\Plugin::class, 'activate']);
+register_deactivation_hook(TUBE_SEO_FILE, [\Tube_Seo\Plugin::class, 'deactivate']);

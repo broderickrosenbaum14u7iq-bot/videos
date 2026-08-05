@@ -40,8 +40,8 @@
 # index:rebuild (nightly) — real command (Phase 7): wp tube-search index:rebuild
 0 1 * * * wp --path=/var/www/html --allow-root eval 'echo "[noop] tube-search index:rebuild\n";' >> /var/log/tube-cron/index-rebuild.log 2>&1
 
-# sitemap:generate (hourly) — real command (Phase 9): wp tube-seo sitemap:generate
-0 * * * * wp --path=/var/www/html --allow-root eval 'echo "[noop] tube-seo sitemap:generate\n";' >> /var/log/tube-cron/sitemap-generate.log 2>&1
+# sitemap:generate (hourly) — real command (Phase 9)
+0 * * * * wp --path=/var/www/html --allow-root tube-seo sitemap:generate >> /var/log/tube-cron/sitemap-generate.log 2>&1
 
 # Safety net for any core/third-party code still using the WP-Cron API
 # internally, now that the HTTP pseudo-cron trigger is disabled

@@ -120,6 +120,30 @@ final class InMemoryVideoMetadataRepository implements VideoMetadataRepositoryIn
     /**
      * {@inheritDoc}
      *
+     * Not exercised by any current consumer of this fixture — see {@see self::find()}'s docblock.
+     *
+     * @param int[] $video_ids The video post IDs to fetch.
+     *
+     * @return array<int, VideoMetadata>
+     */
+    public function find_many(array $video_ids): array
+    {
+        $result = [];
+
+        foreach ($video_ids as $video_id) {
+            $metadata = $this->find($video_id);
+
+            if (null !== $metadata) {
+                $result[ $video_id ] = $metadata;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
      * @param string $cf_stream_uid The Cloudflare Stream UID to look up.
      */
     public function find_video_id_by_stream_uid(string $cf_stream_uid): ?int
