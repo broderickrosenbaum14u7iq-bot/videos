@@ -98,7 +98,7 @@ final class Plugin
      * The video URL provider, per ARCHITECTURE.md §19.5.
      *
      * Public so a future consumer (tube-admin's Phase 10 preview UI,
-     * tube-seo's Phase 9 structured data) can resolve a playback/
+     * tube-seo's Phase 8 structured data) can resolve a playback/
      * thumbnail URL without going through the HTML renderers.
      */
     public function video_provider(): VideoProviderInterface
