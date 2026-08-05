@@ -34,3 +34,17 @@ The Phase 1 decision to defer a full `WP_UnitTestCase` integration suite remains
 
 ### Reaffirmed without change (explicitly re-examined, not just carried over)
 Six independent plugins (re-examined on the basis of the user's own repeated, explicit testability requirement, not just "that's what was already decided"); DB-table-backed import queue over a message broker; the event system's synchronous-and-cheap-by-design shape over a generic deferred-job primitive; `tube/v1` REST namespace sharing (confirmed to be a naming convention, not runtime coupling); Cloudflare storage/CDN strategy; read/write database separation staying deferred; horizontal scalability posture (no server-local state introduced so far).
+
+---
+
+## 2026-08-05 — Phase 9 scope reconciliation (Phase 8's `tube-seo` pull-forward)
+
+Source: `PHASE-8.md`. Not a technical architecture change under `DEVELOPMENT_RULES.md` §8 — no database schema, event catalog, REST versioning, caching strategy, or URL structure changed. This entry documents a §12 phase-table correction only: bringing the roadmap's stated phase ownership back in line with a scope decision already made and delivered during Phase 8's own implementation, so the table doesn't show the same deliverable claimed by two phases at once.
+
+**What happened**: Phase 8's kickoff instruction included a full SEO deliverable list (title/meta description/canonical/robots/OpenGraph/Twitter Cards/JSON-LD/pagination metadata) that duplicated §12's original Phase 9 row (`tube-seo`: schema, meta tags, sitemap generation) almost entirely. Flagged back to the user before any code was written; the user chose explicitly to build `tube-seo` now rather than defer it (`PHASE-8.md` §1). Phase 8 then delivered everything from that list against a real `tube-seo` plugin (`SeoHead`, `PageMetaBuilder`, `VideoObjectBuilder`, `BreadcrumbListBuilder`, `CollectionPageBuilder`, `tube_seo_head()`).
+
+**What was NOT pulled forward**: video XML sitemap generation (`wp tube-seo sitemap:generate`, §7's hourly cron row) — never part of Phase 8's SEO deliverable list, and not built. This is now Phase 9's entire remaining scope.
+
+**§12 updated accordingly**: Phase 8's row now names the `tube-seo` deliverables it actually shipped; Phase 9's row is narrowed to sitemap generation only, with both rows cross-referencing this entry and `PHASE-8.md`. No other section of `ARCHITECTURE.md` needed a change — §4's plugin-purpose tree (`tube-seo: meta/schema/sitemap`), §6's event table (`video.published` → `tube-seo (sitemap flag)`), and §7's cron table (`wp tube-seo sitemap:generate`) all already described only the sitemap piece as still-future work, or described `tube-seo`'s purpose in phase-independent terms; none made a phase-ownership claim Phase 8 had already invalidated.
+
+**Phases 10–12 are unchanged and not renumbered.** Considered and rejected: renumbering would ripple into every other document and commit that already refers to "Phase 10" (`tube-admin`'s own plugin header, prior `PHASE-X.md` files, this changelog's own history) for a purely cosmetic gain, and this project's own convention is to layer corrections on top of history (`PHASE-1-AUDIT.md`) rather than rewrite it. A phase whose numbered scope shrinks because an earlier phase absorbed part of it is not the same situation as a phase that needs renumbering — there is no gap, overlap, or ordering problem in Phases 10–12 for renumbering to fix.

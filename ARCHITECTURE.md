@@ -255,8 +255,8 @@ Unchanged from Revision 2 (§6 there), with one addition specific to this revisi
 | 5 | `tube-core`: `import_queue` table, batch processor, WP-CLI bulk-import command, Cloudflare Stream webhook handling, `watch_history` table + API |
 | 6 | `tube-player`: Stream URL construction from UID, click-to-load embed, image management (§8) — default Stream thumbnails + Cloudflare Images override path |
 | 7 | `tube-search`: `wp_tube_search_index` table + migration, event-driven incremental sync, `index:rebuild` WP-CLI command, query API |
-| 8 | Theme: presentation layer against the plugin template-tag APIs from phases 1–7 |
-| 9 | `tube-seo`: schema, meta tags, sitemap generation (Linux-cron driven) |
+| 8 | Theme: presentation layer against the plugin template-tag APIs from phases 1–7, plus `tube-seo`'s title/meta description/canonical/robots/OpenGraph/Twitter Cards/JSON-LD (`VideoObject`/`BreadcrumbList`/`CollectionPage`)/pagination metadata — pulled forward from this row's original Phase 9 scope; see `PHASE-8.md` and `ARCHITECTURE-CHANGELOG.md` |
+| 9 | `tube-seo`: video XML sitemap generation (Linux-cron driven, `wp tube-seo sitemap:generate`, §7) — the one piece of this row's original scope not delivered in Phase 8 |
 | 10 | `tube-admin`: import dashboard, statistics dashboard, custom-poster upload UI, bulk tools, settings UI |
 | 11 | Scale hardening: read-replica routing, partition rollout/retention verification, load test at simulated 500k-video / high-pageview volume, edge cache tuning |
 | 12 | QA, security review (REST auth/nonces, `$wpdb->prepare()` audit across all six tables, migration rollback drill), staging → production cutover |
