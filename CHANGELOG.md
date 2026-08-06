@@ -2,6 +2,18 @@
 
 All notable changes to this project. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this project did not tag intermediate releases during development (every plugin/theme carried `0.1.0` internally through Phase 11), so **1.0.0 is the first tagged release** and this entry summarizes everything that went into it, phase by phase. Future releases will get their own dated entry above this one.
 
+## [1.0.1] — 2026-08-07
+
+Deployment-procedure hotfix. No application code changed — every plugin's runtime behavior is identical to 1.0.0.
+
+### Fixed
+
+- **Release-blocking**: `docs/DEPLOYMENT.md` §3 step 2 documented a single `composer install --no-dev` run against the release root, but this monorepo has no shared runtime autoloader — the root `composer.json` is dev-tooling-only (PHPCS/PHPStan) and has no `autoload` section. Each of the 6 plugins is independently `composer install`-able via its own `composer.json` (`ARCHITECTURE.md` §4), and every plugin's bootstrap file only conditionally requires its *own* `vendor/autoload.php` (guarded by `file_exists()`, no fallback). Following the documented single-root-install sequence against a genuinely clean checkout left every plugin's `vendor/` directory missing, so every plugin's namespace was never autoloaded and WordPress fataled on `plugins_loaded` with `Class "Tube_X\Plugin" not found` — found deploying the tagged `v1.0.0` release to a clean production VPS.
+  - Root cause this passed 12 phases of review undetected: every local/staging verification ran against a long-lived Docker checkout whose plugin `vendor/` directories were generated once, early in development, and never deleted — so `plugins_loaded` always succeeded locally regardless of whether the documented deploy procedure itself was correct. No phase's verification ever exercised a genuinely clean checkout end-to-end.
+  - Fixed: `docs/DEPLOYMENT.md` §3 step 2 now runs `composer install --no-dev --optimize-autoloader` separately inside each of the 6 plugin directories (all `composer.lock` files are git-tracked, so this is a reproducible `install`, never an `update`). `docs/UPGRADE.md` and `ARCHITECTURE.md` §18.1 updated for consistency. Added a "clean-checkout boot test" item to `docs/DEPLOYMENT.md`'s pre-deployment gate specifically to catch this class of bug before it reaches production again.
+  - Verified: reproduced the fatal by removing `tube-cache`'s `vendor/` directory against the live staging stack (`Tube_Cache\Plugin` class missing), then confirmed the fixed per-plugin `composer install --no-dev` sequence restores it (`class_exists('Tube_Cache\Plugin')` true, homepage `200`).
+- Vendor directories were correctly `.gitignore`d all along (`/**/vendor/`, standard Composer practice — dependency source is never committed, only `composer.lock`) and were **not** accidentally omitted from the release; the defect was purely in the documented deploy procedure not generating them on the production server.
+
 ## [1.0.0] — 2026-08-06
 
 First production release. Six independent WordPress plugins (`tube-core`, `tube-cache`, `tube-player`, `tube-search`, `tube-seo`, `tube-admin`) plus a presentation-only theme (`tube-theme`), built against a frozen architecture (`ARCHITECTURE.md`, `ARCHITECTURE_FREEZE.md`) for a confirmed production target of a single VPS, 3,000–10,000 videos, a few million pageviews/month, Redis, MySQL, and Cloudflare CDN.

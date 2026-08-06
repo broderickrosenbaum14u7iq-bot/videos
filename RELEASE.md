@@ -1,6 +1,10 @@
-# Release 1.0.0
+# Release 1.0.1
 
-**Status: Production-ready.** Tagged `v1.0.0` on `origin/main`. This is the project's first release — a from-scratch rebuild of a WordPress-based video tube site, replacing a prior installation the original site audit found running nulled/third-party plugin code.
+**Status: Production-ready.** Tagged `v1.0.1` on `origin/main`, superseding `v1.0.0`. `v1.0.0` fataled on a clean production deploy — see "1.0.1 hotfix" below — and should not be deployed; deploy `v1.0.1` instead. This is the project's first release — a from-scratch rebuild of a WordPress-based video tube site, replacing a prior installation the original site audit found running nulled/third-party plugin code.
+
+## 1.0.1 hotfix (2026-08-07)
+
+`v1.0.0`'s documented deploy procedure (`docs/DEPLOYMENT.md` §3 step 2) ran a single `composer install --no-dev` at the release root. This project has no shared runtime autoloader by design (`ARCHITECTURE.md` §4 — each of the 6 plugins is independently `composer install`-able via its own `composer.json`; the root `composer.json` is dev tooling only, no `autoload` section), so a release deployed exactly per that documented procedure left every plugin's own `vendor/autoload.php` missing, and every plugin fataled on boot (`Class "Tube_X\Plugin" not found`). This was found deploying the tagged `v1.0.0` release to a clean production VPS — no application code was at fault, and `vendor/` was correctly `.gitignore`d all along (never meant to be committed); the deploy documentation itself was the defect. Full account in `CHANGELOG.md`'s `[1.0.1]` entry, including why 12 phases of review didn't catch it (every local/staging verification ran against a long-lived checkout whose `vendor/` directories already existed, never a genuinely clean one) and how it was verified fixed (reproduced the fatal on live staging, then confirmed the corrected per-plugin `composer install` sequence resolves it). No functional code changed in this patch — only `docs/DEPLOYMENT.md`, `docs/UPGRADE.md`, `ARCHITECTURE.md`'s deploy-sequence line, version bumps, and this changelog/release-notes update.
 
 ## What this release is
 

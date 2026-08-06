@@ -19,7 +19,7 @@ Because every schema change in this project is required to be reversible and add
 
 ## 3. Upgrade sequence
 
-Identical to `docs/DEPLOYMENT.md` §3 (new release directory → `composer install --no-dev` → migrate → symlink flip → smoke test → watch), with one addition specific to an already-live site:
+Identical to `docs/DEPLOYMENT.md` §3 (new release directory → per-plugin `composer install --no-dev` → migrate → symlink flip → smoke test → watch), with one addition specific to an already-live site:
 
 - Between the migration step and the symlink flip, if the release's migrations are additive-only (the common case), there is no ordering hazard — the old code (still live until the symlink flips) simply doesn't know about the new columns/tables yet, which is fine, since nothing reads them until the new code is live.
 - If a release's migration is **not** purely additive (rare — flagged in its release notes per §2 above), the symlink flip must happen as close to immediately after the migration as operationally possible, to minimize the window where old code runs against a schema it wasn't written for.

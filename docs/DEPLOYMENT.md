@@ -15,6 +15,7 @@ Written for the 1.0.0 release, against the confirmed production target: a single
 - [ ] Every plugin's integration suite passes inside the `wpcli` container (`vendor/bin/phpunit -c phpunit-integration.xml.dist`).
 - [ ] `ops/benchmark/run.sh` has been run against staging on this commit and compared against the latest `BENCHMARKS.md` section — no unexplained regression.
 - [ ] `wp tube migrate status` on staging shows every migration this release introduces as pending (not yet applied) — confirms the migration set about to run on production is the one actually reviewed.
+- [ ] **Clean-checkout boot test**: in a scratch directory (not the long-lived staging checkout, which accumulates `vendor/` directories built up over the project's history and can mask a packaging gap), `git clone` the tagged commit fresh, run the §3 step 2 per-plugin `composer install` loop, point a throwaway WordPress install at it, and confirm all 6 plugins activate with zero fatals. A staging environment that has never had its `vendor/` directories deleted is not a substitute for this — it will boot successfully even if the release's actual deploy procedure is broken, which is exactly how the v1.0.0 tag shipped without this step documented.
 - [ ] A fresh, verified backup of the production database exists (§ Backup/Restore, `docs/BACKUP_RESTORE.md`) — taken **before** this deploy, not relied upon from an older one.
 - [ ] Release notes are in `RELEASE.md` / `CHANGELOG.md` and describe exactly what's shipping.
 
@@ -37,8 +38,14 @@ Additional one-time setup, before the standard deploy sequence below applies for
 
 Per `ARCHITECTURE.md` §18.1, using an atomic symlink swap so a bad deploy reverts instantly:
 
-1. `git fetch --tags && git checkout v1.0.0` (or the release tag being deployed) into a **new** release directory, e.g. `/www/wwwroot/phimtoico.org/releases/v1.0.0/`. Never deploy by editing the live directory in place.
-2. `composer install --no-dev --optimize-autoloader` in the new release directory — `--no-dev` excludes every plugin's `phpunit`/dev-only dependency (confirmed in the final security review: every plugin's `composer.json` keeps `phpunit/phpunit` under `require-dev` only).
+1. `git fetch --tags && git checkout v1.0.1` (or the release tag being deployed) into a **new** release directory, e.g. `/www/wwwroot/phimtoico.org/releases/v1.0.1/`. Never deploy by editing the live directory in place.
+2. **Run `composer install --no-dev --optimize-autoloader` separately inside every plugin directory that has its own `composer.json`** — this project has no shared runtime autoloader (`ARCHITECTURE.md` §4: each plugin must remain independently `composer install`-able; the repo-root `composer.json` is dev tooling only — PHPCS/PHPStan — and has no `autoload` section at all, so running `composer install` only at the release root silently leaves every plugin's `vendor/autoload.php` missing and every plugin fatals on boot with `Class "Tube_X\Plugin" not found`. This is not optional per plugin — even the four plugins with zero third-party packages (`tube-player`, `tube-search`, `tube-seo`, `tube-admin`) still need their own generated `vendor/autoload.php`, since that file is what registers their `Tube_X\` PSR-4 namespace; nothing else in the boot path does):
+   ```sh
+   for plugin in tube-core tube-cache tube-player tube-search tube-seo tube-admin; do
+     (cd "wp-content/plugins/${plugin}" && composer install --no-dev --optimize-autoloader --no-interaction)
+   done
+   ```
+   `--no-dev` excludes every plugin's `phpunit`/dev-only dependency (confirmed in the final security review: every plugin's `composer.json` keeps `phpunit/phpunit` under `require-dev` only). Every plugin's `composer.lock` is git-tracked, so this is a reproducible `install`, never an `update` — the exact locked versions reviewed in staging are what ships to production.
 3. Copy/symlink the production `wp-config.php` and any persistent `wp-content/uploads` directory into the new release directory (these are not part of the git-tracked release; see `docs/BACKUP_RESTORE.md` for what's backed up vs. what's git-tracked).
 4. `wp tube migrate status --path=<new-release-path>` — review exactly what's about to run. If any migration touches a large/populated table, confirm it was already dry-run against a production-scale staging copy per `ARCHITECTURE.md` §18.4 before proceeding.
 5. `wp tube migrate up --path=<new-release-path>`.

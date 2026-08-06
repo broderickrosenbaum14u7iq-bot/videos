@@ -3,7 +3,7 @@
  * Plugin Name:       Tube Admin
  * Plugin URI:        https://phimtoico.org
  * Description:       Operational wp-admin UI: import/stats dashboards, video/actor/studio management.
- * Version:           1.0.0
+ * Version:           1.0.1
  * Requires at least: 6.5
  * Requires PHP:      8.3
  * Requires Plugins:  tube-core
@@ -27,7 +27,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-const TUBE_ADMIN_VERSION = '1.0.0';
+const TUBE_ADMIN_VERSION = '1.0.1';
 const TUBE_ADMIN_FILE    = __FILE__;
 const TUBE_ADMIN_DIR     = __DIR__;
 

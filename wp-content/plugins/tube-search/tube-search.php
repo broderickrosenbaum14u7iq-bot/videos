@@ -3,7 +3,7 @@
  * Plugin Name:       Tube Search
  * Plugin URI:        https://phimtoico.org
  * Description:       Discovery layer: search index, grid/listing/related/trending queries. See ARCHITECTURE.md.
- * Version:           1.0.0
+ * Version:           1.0.1
  * Requires at least: 6.5
  * Requires PHP:      8.3
  * Requires Plugins:  tube-core, tube-cache
@@ -28,7 +28,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-const TUBE_SEARCH_VERSION = '1.0.0';
+const TUBE_SEARCH_VERSION = '1.0.1';
 const TUBE_SEARCH_FILE    = __FILE__;
 const TUBE_SEARCH_DIR     = __DIR__;
 
