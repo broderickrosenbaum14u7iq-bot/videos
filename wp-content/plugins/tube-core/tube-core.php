@@ -3,7 +3,7 @@
  * Plugin Name:       Tube Core
  * Plugin URI:        https://phimtoico.org
  * Description:       Foundation plugin: video CPT, taxonomies, tables, migrations, events. See ARCHITECTURE.md.
- * Version:           0.1.0
+ * Version:           1.0.0
  * Requires at least: 6.5
  * Requires PHP:      8.3
  * Author:            Phim Toi Co
@@ -26,7 +26,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-const TUBE_CORE_VERSION = '0.1.0';
+const TUBE_CORE_VERSION = '1.0.0';
 const TUBE_CORE_FILE    = __FILE__;
 const TUBE_CORE_DIR     = __DIR__;
 

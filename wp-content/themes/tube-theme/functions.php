@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-const TUBE_THEME_VERSION = '0.1.0';
+const TUBE_THEME_VERSION = '1.0.0';
 
 require_once __DIR__ . '/inc/template-functions.php';
 

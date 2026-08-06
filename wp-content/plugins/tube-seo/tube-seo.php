@@ -3,7 +3,7 @@
  * Plugin Name:       Tube SEO
  * Plugin URI:        https://phimtoico.org
  * Description:       Meta tags, VideoObject JSON-LD schema, canonical policy. See ARCHITECTURE.md.
- * Version:           0.1.0
+ * Version:           1.0.0
  * Requires at least: 6.5
  * Requires PHP:      8.3
  * Requires Plugins:  tube-core, tube-player, tube-search
@@ -31,7 +31,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-const TUBE_SEO_VERSION = '0.1.0';
+const TUBE_SEO_VERSION = '1.0.0';
 const TUBE_SEO_FILE    = __FILE__;
 const TUBE_SEO_DIR     = __DIR__;
 
