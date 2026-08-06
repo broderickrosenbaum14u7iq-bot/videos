@@ -25,6 +25,7 @@ $tube_theme_videos = tube_search_most_viewed(48);
 <?php if ([] === $tube_theme_videos) : ?>
     <p><?php esc_html_e('No videos yet.', 'tube-theme'); ?></p>
 <?php else : ?>
+    <?php tube_theme_prime_video_grid($tube_theme_videos); ?>
     <div class="video-grid">
         <?php foreach ($tube_theme_videos as $tube_theme_video) : ?>
             <?php get_template_part('template-parts/video-card', null, ['video' => $tube_theme_video]); ?>

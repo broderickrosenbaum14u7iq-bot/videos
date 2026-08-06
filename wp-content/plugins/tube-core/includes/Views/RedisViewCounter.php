@@ -10,7 +10,7 @@ declare(strict_types=1);
 namespace Tube_Core\Views;
 
 use Predis\ClientInterface;
-use Predis\Connection\ConnectionException;
+use Predis\PredisException;
 use Predis\Response\ServerException;
 
 /**
@@ -31,14 +31,19 @@ use Predis\Response\ServerException;
  * fresh buffer for the next flush (if it lands after) — never both, never
  * lost.
  *
- * `record()` degrades to a logged no-op on a Redis connection failure —
- * the same fail-open principle `Tube_Cache\Cache\RedisCache` applies,
- * since it runs on the live page-render path and one missed view count
- * must never be able to break rendering a video page. `flush()`
- * deliberately does not — it runs only from the `views:flush` WP-CLI
+ * `record()` degrades to a logged no-op on any Redis failure (catches
+ * `Predis\PredisException`, the base both a connection failure and a
+ * server-side error like Redis's own memory-pressure `OOM` response
+ * extend — widened in Phase 11 for the same reason and alongside
+ * `Tube_Cache\Cache\RedisCache`'s own widening, see that class's
+ * docblock) — the same fail-open principle `RedisCache` applies, since
+ * it runs on the live page-render path and one missed view count must
+ * never be able to break rendering a video page. `flush()` deliberately
+ * does not degrade broadly — it runs only from the `views:flush` WP-CLI
  * cron job, where a Redis failure should surface as a failed job (per
  * ARCHITECTURE.md §18.5's cron-job-exit-code monitoring), not be
- * silently swallowed.
+ * silently swallowed; it catches only the one specific, expected
+ * `ServerException` race documented below, nothing broader.
  *
  * One narrow race `flush()` does handle: busybox cron (this project's
  * staging cron, ARCHITECTURE.md §7) does not skip a run if the previous
@@ -74,7 +79,7 @@ final class RedisViewCounter implements ViewCounterInterface
     {
         try {
             $this->client->hincrby(self::BUFFER_KEY, (string) $video_id, 1);
-        } catch (ConnectionException $exception) {
+        } catch (PredisException $exception) {
             // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- deliberate production logging for a degraded-but-handled Redis failure, mirroring Tube_Cache\Cache\RedisCache's documented fail-open behavior.
             error_log('[tube-core] Redis view record failed, degrading gracefully: ' . $exception->getMessage());
         }

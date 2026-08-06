@@ -30,6 +30,35 @@ use Tube_Core\Plugin as Tube_Core_Plugin;
 use Tube_Player\Video\ImageSize;
 
 /**
+ * Batch-fetch video metadata for a list of video IDs, warming
+ * `Tube_Core\Video\Repositories\VideoMetadataRepository`'s own
+ * request-lifetime cache so that a subsequent per-video
+ * `tube_player_get_image_html()`/`tube_player_get_embed_html()` call for
+ * any of these IDs is a free in-memory lookup instead of its own query.
+ *
+ * Added in Phase 11: every theme grid template (homepage, archive/tag/
+ * category/actor/studio listings, search, related videos) renders one
+ * `template-parts/video-card` per item, and each card independently
+ * called `tube_player_get_image_html()` — one `wp_tube_video_metadata`
+ * query per card, on exactly the highest-traffic pages. Call this once
+ * with every video ID in the grid, before the loop that renders them.
+ *
+ * Purely a performance optimization — correctness never depends on
+ * calling this first; every template tag it feeds still works standalone
+ * (just with its own per-video query) if this is skipped.
+ *
+ * @param int[] $video_ids The video post IDs about to be rendered.
+ */
+function tube_player_prime_video_metadata(array $video_ids): void
+{
+    if ([] === $video_ids) {
+        return;
+    }
+
+    Tube_Core_Plugin::instance()->video_metadata_repository()->find_many($video_ids);
+}
+
+/**
  * Render a video's poster/thumbnail `<img>` tag.
  *
  * @param int                        $video_id The video post ID.

@@ -34,6 +34,7 @@ foreach ($tube_theme_sections as $tube_theme_section) :
     }
     ?>
     <h2 class="section-heading"><?php echo esc_html($tube_theme_section['label']); ?></h2>
+    <?php tube_theme_prime_video_grid($tube_theme_section['videos']); ?>
     <div class="video-grid">
         <?php foreach ($tube_theme_section['videos'] as $tube_theme_video) : ?>
             <?php get_template_part('template-parts/video-card', null, ['video' => $tube_theme_video]); ?>

@@ -132,4 +132,131 @@ final class VideoMetadataRepositoryIntegrationTest extends TestCase
         self::assertSame(501, $metadata->poster_image_id);
         self::assertSame(502, $metadata->og_image_id);
     }
+
+    /**
+     * Phase 11: after find_many() primes the cache, a subsequent find()
+     * for the same ID issues zero additional queries.
+     */
+    public function test_find_after_find_many_issues_no_additional_query(): void
+    {
+        $this->repository->create($this->video_id, 'uid-' . uniqid('', true), CfStreamStatus::Ready);
+
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API.
+
+        $this->repository->find_many([$this->video_id]);
+
+        $queries_before = $wpdb->num_queries;
+        $metadata       = $this->repository->find($this->video_id);
+        $queries_after  = $wpdb->num_queries;
+
+        self::assertNotNull($metadata);
+        self::assertSame($queries_before, $queries_after, 'find() after find_many() should not issue a new query.');
+    }
+
+    /**
+     * Phase 11: find_many() also caches "no row for this ID" — a
+     * subsequent find() for a video genuinely absent from the table
+     * issues zero additional queries either.
+     */
+    public function test_find_after_find_many_caches_a_negative_result_too(): void
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API.
+
+        // $this->video_id has no metadata row in this test.
+        $this->repository->find_many([$this->video_id]);
+
+        $queries_before = $wpdb->num_queries;
+        $metadata       = $this->repository->find($this->video_id);
+        $queries_after  = $wpdb->num_queries;
+
+        self::assertNull($metadata);
+        self::assertSame($queries_before, $queries_after, 'find() after find_many() should not re-query.');
+    }
+
+    /**
+     * Phase 11: a second find_many() call only queries for IDs not
+     * already cached by the first call.
+     */
+    public function test_find_many_does_not_requery_already_cached_ids(): void
+    {
+        $second_video_id = wp_insert_post(
+            [
+                'post_type'   => 'video',
+                'post_title'  => 'VideoMetadataRepository::find_many() second Test Video',
+                'post_status' => 'draft',
+            ],
+            true
+        );
+        self::assertIsInt($second_video_id);
+
+        try {
+            $this->repository->create($this->video_id, 'uid-a-' . uniqid('', true), CfStreamStatus::Ready);
+            $this->repository->create($second_video_id, 'uid-b-' . uniqid('', true), CfStreamStatus::Ready);
+
+            global $wpdb;
+            /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API.
+
+            $this->repository->find_many([$this->video_id]);
+
+            $queries_before = $wpdb->num_queries;
+            $result         = $this->repository->find_many([$this->video_id, $second_video_id]);
+            $queries_after  = $wpdb->num_queries;
+
+            self::assertCount(2, $result);
+            self::assertGreaterThan(
+                $queries_before,
+                $queries_after,
+                'A find_many() call with a genuinely-new ID should still issue a query.'
+            );
+        } finally {
+            global $wpdb;
+            /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API.
+
+            $wpdb->delete($wpdb->prefix . 'tube_video_metadata', ['video_id' => $second_video_id], ['%d']);
+            wp_delete_post($second_video_id, true);
+        }
+    }
+
+    /**
+     * Phase 11 regression test: a find() that caches "no row yet" must
+     * not shadow a create() for that same video within the same request.
+     * Caught by this phase's own Implementation Review (test suite
+     * re-run) as a real bug — the cache was originally invalidated
+     * nowhere, so tube-player's/tube-seo's own integration tests (which
+     * call find() before create() via a shared repository instance)
+     * started failing once caching was added.
+     */
+    public function test_find_after_create_reflects_the_new_row_even_when_find_cached_no_row_first(): void
+    {
+        self::assertNull($this->repository->find($this->video_id), 'Sanity check: no row yet, so this caches null.');
+
+        $this->repository->create($this->video_id, 'uid-' . uniqid('', true), CfStreamStatus::Ready);
+
+        self::assertNotNull(
+            $this->repository->find($this->video_id),
+            'find() after create() must see the new row, not the null cached before create() ran.'
+        );
+    }
+
+    /**
+     * Phase 11 regression test: the same shadowing risk for
+     * update_status()/update_images()/update_thumbnail_time() — a find()
+     * that cached the pre-update row must not shadow the write.
+     */
+    public function test_find_after_update_status_reflects_the_change(): void
+    {
+        $this->repository->create($this->video_id, 'uid-' . uniqid('', true), CfStreamStatus::Pending);
+
+        self::assertSame(CfStreamStatus::Pending, $this->repository->find($this->video_id)?->cf_status);
+
+        $this->repository->update_status($this->video_id, CfStreamStatus::Ready, 90);
+
+        self::assertSame(
+            CfStreamStatus::Ready,
+            $this->repository->find($this->video_id)?->cf_status,
+            'find() after update_status() must see the new status, not the one cached before the update.'
+        );
+    }
 }

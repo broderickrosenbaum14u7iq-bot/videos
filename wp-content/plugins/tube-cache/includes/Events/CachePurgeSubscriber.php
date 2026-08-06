@@ -86,6 +86,13 @@ final class CachePurgeSubscriber
     private const VIDEO_STATS_ROLLED_UP = 'tube_core.video.stats_rolled_up';
 
     /**
+     * Must match Tube_Core\Events\EventCatalog::VIDEO_STREAM_STATUS_CHANGED
+     * exactly — see this class's docblock for why tube-cache references
+     * the literal string instead of that constant.
+     */
+    private const VIDEO_STREAM_STATUS_CHANGED = 'tube_core.video.stream_status_changed';
+
+    /**
      * Construct around the cache entries this subscriber purges.
      *
      * @param CacheInterface $cache The cache to purge entries from.
@@ -108,6 +115,7 @@ final class CachePurgeSubscriber
         add_action(self::VIDEO_UPDATED, [$this, 'handle_video_updated'], 10, 1);
         add_action(self::VIDEO_DELETED, [$this, 'handle_video_deleted'], 10, 1);
         add_action(self::VIDEO_STATS_ROLLED_UP, [$this, 'handle_video_stats_rolled_up'], 10, 1);
+        add_action(self::VIDEO_STREAM_STATUS_CHANGED, [$this, 'handle_video_stream_status_changed'], 10, 1);
     }
 
     /**
@@ -169,6 +177,38 @@ final class CachePurgeSubscriber
     {
         $this->cache->delete(CacheKeys::trending());
         $this->cache->delete(CacheKeys::most_viewed());
+    }
+
+    /**
+     * `tube_core.video.stream_status_changed` handler. Per ARCHITECTURE.md
+     * §16.1's exact row for this event ("ready" transition): purge the
+     * video's own detail key only — not related-videos, not any listing
+     * key, since a Stream encoding-status change affects only how this
+     * one video's own detail page renders (e.g. a "still processing"
+     * placeholder becoming real playback markup), not its relationship to
+     * other videos or its presence in a listing. Found missing during
+     * Phase 11's cache-behavior audit: `StreamStatusUpdater` has dispatched
+     * this event since Phase 5, but no subscriber ever purged on it,
+     * meaning a cached "not ready yet" detail response could persist for
+     * up to its full TTL after the video actually became playable.
+     *
+     * `status` is unused here — any status change invalidates the cached
+     * detail response, not just a transition to "ready".
+     *
+     * @param array<string, mixed> $payload Carries `video_id`/`status` per EVENTS.md.
+     */
+    public function handle_video_stream_status_changed(array $payload): void
+    {
+        try {
+            $video_id = self::extract_video_id($payload);
+        } catch (InvalidArgumentException $exception) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- deliberate production logging for a malformed event payload that is otherwise silently ignored; not leftover debug code.
+            error_log('[tube-cache] ' . $exception->getMessage());
+
+            return;
+        }
+
+        $this->cache->delete(CacheKeys::video_detail($video_id));
     }
 
     /**

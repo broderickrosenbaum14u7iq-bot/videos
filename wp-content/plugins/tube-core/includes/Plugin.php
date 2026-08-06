@@ -40,6 +40,7 @@ use Tube_Core\SchemaMigrations\Migration005CreateVideoViewsTable;
 use Tube_Core\SchemaMigrations\Migration006CreateVideoStatisticsTable;
 use Tube_Core\SchemaMigrations\Migration007CreateImportQueueTable;
 use Tube_Core\SchemaMigrations\Migration008CreateWatchHistoryTable;
+use Tube_Core\SchemaMigrations\Migration009AddVideoStatisticsWindowIndexes;
 use Tube_Core\Stream\StreamStatusUpdater;
 use Tube_Core\Stream\WebhookController;
 use Tube_Core\Stream\WebhookSignatureVerifier;
@@ -258,6 +259,7 @@ final class Plugin
                     Migration006CreateVideoStatisticsTable::class,
                     Migration007CreateImportQueueTable::class,
                     Migration008CreateWatchHistoryTable::class,
+                    Migration009AddVideoStatisticsWindowIndexes::class,
                 ]
             );
         }

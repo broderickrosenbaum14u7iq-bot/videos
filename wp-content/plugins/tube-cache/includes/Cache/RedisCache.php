@@ -11,7 +11,7 @@ namespace Tube_Cache\Cache;
 
 use InvalidArgumentException;
 use Predis\ClientInterface;
-use Predis\Connection\ConnectionException;
+use Predis\PredisException;
 
 /**
  * Redis-backed CacheInterface implementation.
@@ -26,14 +26,23 @@ use Predis\Connection\ConnectionException;
  * into this process; this project stores plain arrays/scalars in the
  * cache, never objects, so disallowing classes costs nothing real.
  *
- * A Redis connection failure degrades every method to a safe default
- * (documented per-method below) instead of throwing — the cache must
- * never be a single point of failure for page rendering. Each failure is
- * still logged via error_log() so it surfaces through the PHP
- * error-log monitoring ARCHITECTURE.md §18.5 already calls for; it is
- * not swallowed silently. Only Predis\Connection\ConnectionException is
- * caught this way — a genuine programming error (e.g. a TypeError) is
- * not masked.
+ * A Redis failure degrades every method to a safe default (documented
+ * per-method below) instead of throwing — the cache must never be a
+ * single point of failure for page rendering. Each failure is still
+ * logged via error_log() so it surfaces through the PHP error-log
+ * monitoring ARCHITECTURE.md §18.5 already calls for; it is not
+ * swallowed silently. Catches `Predis\PredisException`, the base type
+ * both a connection failure (`Predis\Connection\ConnectionException`)
+ * and a server-side error (`Predis\Response\ServerException`, e.g.
+ * Redis's own `OOM command not allowed when used memory > 'maxmemory'`)
+ * extend — widened in Phase 11 after an audit found only
+ * `ConnectionException` was caught, so a real, ARCHITECTURE.md
+ * §18.5-documented risk (Redis memory pressure on a single, fixed-RAM
+ * VPS) was throwing uncaught out of a live page render instead of
+ * degrading gracefully like every other Redis failure mode here. A
+ * genuine programming error (e.g. a TypeError) is still not masked —
+ * `PredisException` is Predis's own base for its exception hierarchy,
+ * not PHP's `Throwable`.
  */
 final class RedisCache implements CacheInterface
 {
@@ -65,8 +74,8 @@ final class RedisCache implements CacheInterface
     {
         try {
             $raw = $this->client->get(self::KEY_PREFIX . $key);
-        } catch (ConnectionException $exception) {
-            $this->log_connection_failure('get', $exception);
+        } catch (PredisException $exception) {
+            $this->log_redis_failure('get', $exception);
 
             return null;
         }
@@ -101,8 +110,8 @@ final class RedisCache implements CacheInterface
         try {
             // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize -- documented on the class: paired with allowed_classes=false on read, and this project never caches objects, only arrays/scalars.
             $this->client->setex(self::KEY_PREFIX . $key, $ttl_seconds, serialize($value));
-        } catch (ConnectionException $exception) {
-            $this->log_connection_failure('set', $exception);
+        } catch (PredisException $exception) {
+            $this->log_redis_failure('set', $exception);
         }
     }
 
@@ -119,8 +128,8 @@ final class RedisCache implements CacheInterface
     {
         try {
             $this->client->del([self::KEY_PREFIX . $key]);
-        } catch (ConnectionException $exception) {
-            $this->log_connection_failure('delete', $exception);
+        } catch (PredisException $exception) {
+            $this->log_redis_failure('delete', $exception);
         }
     }
 
@@ -154,8 +163,8 @@ final class RedisCache implements CacheInterface
             }
 
             return $value;
-        } catch (ConnectionException $exception) {
-            $this->log_connection_failure('increment', $exception);
+        } catch (PredisException $exception) {
+            $this->log_redis_failure('increment', $exception);
 
             return 0;
         }
@@ -165,10 +174,10 @@ final class RedisCache implements CacheInterface
      * Log a degraded-but-not-fatal Redis failure, per this class's
      * documented fail-open behavior.
      *
-     * @param string              $operation The CacheInterface method that failed.
-     * @param ConnectionException $exception The underlying Predis exception.
+     * @param string          $operation The CacheInterface method that failed.
+     * @param PredisException $exception The underlying Predis exception (connection or server-side).
      */
-    private function log_connection_failure(string $operation, ConnectionException $exception): void
+    private function log_redis_failure(string $operation, PredisException $exception): void
     {
         // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- deliberate production logging for a degraded-but-handled Redis failure, per this class's documented fail-open behavior and ARCHITECTURE.md §18.5's PHP-error-log monitoring; not leftover debug code.
         error_log(

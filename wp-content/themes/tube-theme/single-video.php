@@ -88,6 +88,7 @@ while (have_posts()) :
     <?php $tube_theme_related = tube_search_related_videos($tube_theme_video_id, 12); ?>
     <?php if ([] !== $tube_theme_related) : ?>
         <h2 class="section-heading"><?php esc_html_e('Related Videos', 'tube-theme'); ?></h2>
+        <?php tube_theme_prime_video_grid($tube_theme_related); ?>
         <div class="video-grid">
             <?php foreach ($tube_theme_related as $tube_theme_related_video) : ?>
                 <?php get_template_part('template-parts/video-card', null, ['video' => $tube_theme_related_video]); ?>

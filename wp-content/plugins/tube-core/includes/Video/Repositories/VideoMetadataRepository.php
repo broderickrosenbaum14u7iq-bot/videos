@@ -23,9 +23,49 @@ use Tube_Core\Video\VideoMetadata;
  * insert()/update()/get_var() helpers (already internally parameterized)
  * rather than hand-written SQL — the same style
  * `Tube_Core\Database\SchemaVersionStore` already established in Phase 1.
+ *
+ * `find()` and `find_many()` share a request-lifetime, plugin-instance-
+ * scoped in-memory cache (this class's own instance is memoized for the
+ * whole request by `Tube_Core\Plugin::video_metadata_repository()`, the
+ * same lazy-singleton pattern every other accessor there already uses).
+ * Added in Phase 11 after the audit found `tube-player`'s
+ * `tube_player_get_image_html()`/`tube_player_get_embed_html()` template
+ * tags — which each call `find()` once per video — being called once per
+ * card inside every theme grid template's loop (homepage, every archive
+ * page, search, related videos), with no batching: an N-query-per-page
+ * pattern on exactly the highest-traffic pages. `tube_player_prime_video_metadata()`
+ * (tube-player's new template tag) calls `find_many()` once before such a
+ * loop specifically to populate this cache, so each subsequent per-card
+ * `find()` call is then a free in-memory lookup instead of its own query
+ * — without changing either existing template tag's signature or this
+ * interface's contract at all. A cache miss still falls through to a
+ * real single-row query, so correctness never depends on priming having
+ * happened first; priming is purely a performance optimization.
+ *
+ * Every write method (`create()`/`update_status()`/`update_images()`/
+ * `update_thumbnail_time()`) unsets its video's cache entry after
+ * writing, so a `find()` later in the same request always re-queries
+ * rather than returning what it cached before the write — including the
+ * case where an earlier `find()` cached a real "no row yet" null for a
+ * video that then gets `create()`'d within the same request (the import
+ * pipeline's own call sequence). A missed invalidation here would be a
+ * silent stale-read bug, not just a missed optimization — caught by this
+ * phase's own integration tests re-running against the real request-
+ * lifetime singleton the same way `Tube_Core\Plugin::video_metadata_repository()`
+ * serves it.
  */
 final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
 {
+    /**
+     * Request-lifetime cache: video_id => resolved result. A key's mere
+     * presence (checked via array_key_exists(), not isset()) means "this
+     * ID has already been resolved," since the value itself is legitimately
+     * null for a video with no metadata row.
+     *
+     * @var array<int, VideoMetadata|null>
+     */
+    private array $cache = [];
+
     /**
      * {@inheritDoc}
      *
@@ -52,6 +92,8 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
             ],
             ['%d', '%s', '%s', '%s', '%s']
         );
+
+        unset($this->cache[ $video_id ]);
     }
 
     /**
@@ -61,6 +103,10 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
      */
     public function find(int $video_id): ?VideoMetadata
     {
+        if (array_key_exists($video_id, $this->cache)) {
+            return $this->cache[ $video_id ];
+        }
+
         global $wpdb;
         /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
 
@@ -76,12 +122,17 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
         );
 
         if (! is_array($row)) {
+            $this->cache[ $video_id ] = null;
+
             return null;
         }
 
         /** @var array{video_id: string, cf_stream_uid: string, cf_status: string, duration_seconds: string|null, thumbnail_time_seconds: string, poster_image_id: string|null, og_image_id: string|null} $row */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
 
-        return self::hydrate($row);
+        $metadata                 = self::hydrate($row);
+        $this->cache[ $video_id ] = $metadata;
+
+        return $metadata;
     }
 
     /**
@@ -95,39 +146,68 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
      */
     public function find_many(array $video_ids): array
     {
-        if ([] === $video_ids) {
-            return [];
-        }
+        $video_ids = array_values(array_unique($video_ids));
 
-        global $wpdb;
-        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
-
-        $placeholders = implode(', ', array_fill(0, count($video_ids), '%d'));
-
-        $sql = $wpdb->prepare(
-            'SELECT video_id, cf_stream_uid, cf_status, duration_seconds, thumbnail_time_seconds,'
-                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared -- $placeholders is a fixed-shape string of literal "%d" tokens (one per element of $video_ids), never external input, and every actual value is still a %i/%d-bound argument below.
-                . " poster_image_id, og_image_id FROM %i WHERE video_id IN ({$placeholders})",
-            array_merge([$wpdb->prefix . 'tube_video_metadata'], $video_ids)
+        // Skip IDs this instance already resolved (whether found or not) —
+        // find_many() is also how tube_player_prime_video_metadata() warms
+        // the cache before a theme grid loop, so a second call for a
+        // partially-overlapping ID list (e.g. related videos sharing an ID
+        // with a homepage row already rendered) never re-queries them.
+        $uncached_ids = array_values(
+            array_filter($video_ids, fn (int $video_id): bool => ! array_key_exists($video_id, $this->cache))
         );
 
-        if (null === $sql) {
-            throw new RuntimeException(
-                'wpdb::prepare() returned null for the find_many() query in ' . self::class . '.'
+        if ([] !== $uncached_ids) {
+            global $wpdb;
+            /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+            $placeholders = implode(', ', array_fill(0, count($uncached_ids), '%d'));
+
+            $sql = $wpdb->prepare(
+                'SELECT video_id, cf_stream_uid, cf_status, duration_seconds, thumbnail_time_seconds,'
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared -- $placeholders is a fixed-shape string of literal "%d" tokens (one per element of $uncached_ids), never external input, and every actual value is still a %i/%d-bound argument below.
+                    . " poster_image_id, og_image_id FROM %i WHERE video_id IN ({$placeholders})",
+                array_merge([$wpdb->prefix . 'tube_video_metadata'], $uncached_ids)
             );
+
+            if (null === $sql) {
+                throw new RuntimeException(
+                    'wpdb::prepare() returned null for the find_many() query in ' . self::class . '.'
+                );
+            }
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- dedicated custom table (§2.5, §11); $sql *is* $wpdb->prepare()'d above.
+            $rows = $wpdb->get_results($sql, ARRAY_A);
+
+            /** @var array<int, array{video_id: string, cf_stream_uid: string, cf_status: string, duration_seconds: string|null, thumbnail_time_seconds: string, poster_image_id: string|null, og_image_id: string|null}> $rows */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+            $rows = (array) $rows;
+
+            $found_ids = [];
+
+            foreach ($rows as $row) {
+                $metadata                           = self::hydrate($row);
+                $this->cache[ $metadata->video_id ] = $metadata;
+                $found_ids[ $metadata->video_id ]   = true;
+            }
+
+            // Every requested-but-not-returned ID genuinely has no metadata
+            // row -- cache that too, so a later find() for it is also free
+            // instead of re-querying for a row that doesn't exist.
+            foreach ($uncached_ids as $uncached_id) {
+                if (! isset($found_ids[ $uncached_id ])) {
+                    $this->cache[ $uncached_id ] = null;
+                }
+            }
         }
-
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- dedicated custom table (§2.5, §11); $sql *is* $wpdb->prepare()'d above.
-        $rows = $wpdb->get_results($sql, ARRAY_A);
-
-        /** @var array<int, array{video_id: string, cf_stream_uid: string, cf_status: string, duration_seconds: string|null, thumbnail_time_seconds: string, poster_image_id: string|null, og_image_id: string|null}> $rows */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
-        $rows = (array) $rows;
 
         $result = [];
 
-        foreach ($rows as $row) {
-            $metadata                      = self::hydrate($row);
-            $result[ $metadata->video_id ] = $metadata;
+        foreach ($video_ids as $video_id) {
+            $metadata = $this->cache[ $video_id ];
+
+            if (null !== $metadata) {
+                $result[ $video_id ] = $metadata;
+            }
         }
 
         return $result;
@@ -233,6 +313,8 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
         $wpdb->update($table, $data, ['video_id' => $video_id], $formats, ['%d']);
+
+        unset($this->cache[ $video_id ]);
     }
 
     /**
@@ -259,6 +341,8 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
             ['%d', '%d', '%s'],
             ['%d']
         );
+
+        unset($this->cache[ $video_id ]);
     }
 
     /**
@@ -283,5 +367,7 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
             ['%d', '%s'],
             ['%d']
         );
+
+        unset($this->cache[ $video_id ]);
     }
 }

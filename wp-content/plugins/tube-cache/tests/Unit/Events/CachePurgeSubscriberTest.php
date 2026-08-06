@@ -139,6 +139,34 @@ final class CachePurgeSubscriberTest extends TestCase
     }
 
     /**
+     * The stream-status-changed handler purges only the payload video's
+     * own detail key — not related-videos, not any listing key — per
+     * ARCHITECTURE.md §16.1's row for this event. Added Phase 11: this
+     * event previously had no subscriber at all.
+     */
+    public function test_handle_video_stream_status_changed_purges_only_the_video_detail_key(): void
+    {
+        $this->subscriber->handle_video_stream_status_changed(
+            [
+                'video_id' => 11,
+                'status'   => 'ready',
+            ]
+        );
+
+        self::assertSame([CacheKeys::video_detail(11)], $this->cache->deleted);
+    }
+
+    /**
+     * A malformed payload is ignored rather than throwing, same as every other handler.
+     */
+    public function test_handle_video_stream_status_changed_ignores_a_malformed_payload(): void
+    {
+        $this->subscriber->handle_video_stream_status_changed([]);
+
+        self::assertSame([], $this->cache->deleted);
+    }
+
+    /**
      * Purging one video does not touch a previously-cached different video's entry.
      */
     public function test_purging_one_video_does_not_affect_another(): void

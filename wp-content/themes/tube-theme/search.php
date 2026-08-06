@@ -39,6 +39,7 @@ $tube_theme_items = tube_search_query(
 <?php if ([] === $tube_theme_items) : ?>
     <p><?php esc_html_e('No videos matched your search.', 'tube-theme'); ?></p>
 <?php else : ?>
+    <?php tube_theme_prime_video_grid($tube_theme_items); ?>
     <div class="video-grid">
         <?php foreach ($tube_theme_items as $tube_theme_video) : ?>
             <?php get_template_part('template-parts/video-card', null, ['video' => $tube_theme_video]); ?>

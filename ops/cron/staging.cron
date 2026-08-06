@@ -37,8 +37,8 @@
 # watch-history:purge (nightly) — real command (Phase 5).
 0 4 * * * wp --path=/var/www/html --allow-root tube-core watch-history:purge >> /var/log/tube-cron/watch-history-purge.log 2>&1
 
-# index:rebuild (nightly) — real command (Phase 7): wp tube-search index:rebuild
-0 1 * * * wp --path=/var/www/html --allow-root eval 'echo "[noop] tube-search index:rebuild\n";' >> /var/log/tube-cron/index-rebuild.log 2>&1
+# index:rebuild (nightly) — real command (Phase 7)
+0 1 * * * wp --path=/var/www/html --allow-root tube-search index:rebuild >> /var/log/tube-cron/index-rebuild.log 2>&1
 
 # sitemap:generate (hourly) — real command (Phase 9)
 0 * * * * wp --path=/var/www/html --allow-root tube-seo sitemap:generate >> /var/log/tube-cron/sitemap-generate.log 2>&1

@@ -66,6 +66,7 @@ $tube_theme_empty_message = $args['empty_message'];
 <?php if ([] === $tube_theme_result->items) : ?>
     <p><?php echo esc_html($tube_theme_empty_message); ?></p>
 <?php else : ?>
+    <?php tube_theme_prime_video_grid($tube_theme_result->items); ?>
     <div class="video-grid">
         <?php foreach ($tube_theme_result->items as $tube_theme_video) : ?>
             <?php get_template_part('template-parts/video-card', null, ['video' => $tube_theme_video]); ?>
