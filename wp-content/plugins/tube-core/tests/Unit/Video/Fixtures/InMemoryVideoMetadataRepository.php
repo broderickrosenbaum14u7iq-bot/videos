@@ -52,6 +52,20 @@ final class InMemoryVideoMetadataRepository implements VideoMetadataRepositoryIn
     public array $update_status_calls = [];
 
     /**
+     * Poster/OG image overrides, keyed by video ID.
+     *
+     * @var array<int, array{poster_image_id: int|null, og_image_id: int|null}>
+     */
+    private array $images_by_video_id = [];
+
+    /**
+     * Thumbnail source-frame offsets, keyed by video ID.
+     *
+     * @var array<int, int>
+     */
+    private array $thumbnail_time_by_video_id = [];
+
+    /**
      * Seed existing state, as if a prior create()/update_status() had
      * already happened — for test setup, not part of the interface.
      *
@@ -105,15 +119,19 @@ final class InMemoryVideoMetadataRepository implements VideoMetadataRepositoryIn
         }
 
         $cf_stream_uid = array_search($video_id, $this->video_id_by_uid, true);
+        $images        = $this->images_by_video_id[ $video_id ] ?? [
+            'poster_image_id' => null,
+            'og_image_id'     => null,
+        ];
 
         return new VideoMetadata(
             $video_id,
             is_string($cf_stream_uid) ? $cf_stream_uid : '',
             $status,
             null,
-            0,
-            null,
-            null
+            $this->thumbnail_time_by_video_id[ $video_id ] ?? 0,
+            $images['poster_image_id'],
+            $images['og_image_id']
         );
     }
 
@@ -177,5 +195,31 @@ final class InMemoryVideoMetadataRepository implements VideoMetadataRepositoryIn
         ];
 
         $this->status_by_video_id[ $video_id ] = $status;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int      $video_id        The video post ID.
+     * @param int|null $poster_image_id The Cloudflare Images ID to use as the poster override, or null to clear it.
+     * @param int|null $og_image_id     The Cloudflare Images ID to use as the OG-image override, or null to clear it.
+     */
+    public function update_images(int $video_id, ?int $poster_image_id, ?int $og_image_id): void
+    {
+        $this->images_by_video_id[ $video_id ] = [
+            'poster_image_id' => $poster_image_id,
+            'og_image_id'     => $og_image_id,
+        ];
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int $video_id               The video post ID.
+     * @param int $thumbnail_time_seconds The offset, in seconds, to extract the default thumbnail from.
+     */
+    public function update_thumbnail_time(int $video_id, int $thumbnail_time_seconds): void
+    {
+        $this->thumbnail_time_by_video_id[ $video_id ] = $thumbnail_time_seconds;
     }
 }

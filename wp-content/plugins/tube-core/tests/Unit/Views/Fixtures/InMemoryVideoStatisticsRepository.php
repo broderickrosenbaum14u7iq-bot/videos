@@ -105,4 +105,40 @@ final class InMemoryVideoStatisticsRepository implements VideoStatisticsReposito
     {
         return array_slice($this->top_by_views_7d_to_return, 0, $limit);
     }
+
+    /**
+     * What list_all() should return.
+     *
+     * @var list<array{video_id: int, views_total: int, views_today: int, views_7d: int, views_30d: int}>
+     */
+    public array $list_all_to_return = [];
+
+    /**
+     * What count_all() should return.
+     *
+     * @var int
+     */
+    public int $count_all_to_return = 0;
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param 'views_total'|'views_today'|'views_7d'|'views_30d' $order_by Column to sort by, highest first.
+     * @param int                                                $limit    Maximum number of videos to return.
+     * @param int                                                $offset   Number of videos to skip, for pagination.
+     *
+     * @return list<array{video_id: int, views_total: int, views_today: int, views_7d: int, views_30d: int}>
+     */
+    public function list_all(string $order_by, int $limit, int $offset): array
+    {
+        return array_slice($this->list_all_to_return, $offset, $limit);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function count_all(): int
+    {
+        return $this->count_all_to_return;
+    }
 }

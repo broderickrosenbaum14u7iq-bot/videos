@@ -69,6 +69,44 @@ final class InMemoryImportQueueRepository implements ImportQueueRepositoryInterf
     public array $status_counts_to_return = [];
 
     /**
+     * What list_items() should return.
+     *
+     * @var list<array{
+     *     id: int,
+     *     source_key: string,
+     *     status: string,
+     *     attempts: int,
+     *     max_attempts: int,
+     *     last_error: string|null,
+     *     video_id: int|null,
+     *     created_at: string,
+     *     updated_at: string
+     * }>
+     */
+    public array $list_items_to_return = [];
+
+    /**
+     * What count_items() should return.
+     *
+     * @var int
+     */
+    public int $count_items_to_return = 0;
+
+    /**
+     * Item IDs requeue() should treat as a real `failed` item.
+     *
+     * @var int[]
+     */
+    public array $requeueable_ids = [];
+
+    /**
+     * Every requeue() call this fake received, in order.
+     *
+     * @var int[]
+     */
+    public array $requeue_calls = [];
+
+    /**
      * {@inheritDoc}
      *
      * @param list<array{source_key: string, payload: array<string, mixed>}> $items Items to enqueue.
@@ -131,5 +169,51 @@ final class InMemoryImportQueueRepository implements ImportQueueRepositoryInterf
     public function status_counts(): array
     {
         return $this->status_counts_to_return;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param ImportStatus|null $status Only items with this status, or every status if null.
+     * @param int               $limit  Maximum number of items to return.
+     * @param int               $offset Number of items to skip, for pagination.
+     *
+     * @return list<array{
+     *     id: int,
+     *     source_key: string,
+     *     status: string,
+     *     attempts: int,
+     *     max_attempts: int,
+     *     last_error: string|null,
+     *     video_id: int|null,
+     *     created_at: string,
+     *     updated_at: string
+     * }>
+     */
+    public function list_items(?ImportStatus $status, int $limit, int $offset): array
+    {
+        return $this->list_items_to_return;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param ImportStatus|null $status Only items with this status, or every status if null.
+     */
+    public function count_items(?ImportStatus $status): int
+    {
+        return $this->count_items_to_return;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int $id The queue item's ID.
+     */
+    public function requeue(int $id): bool
+    {
+        $this->requeue_calls[] = $id;
+
+        return in_array($id, $this->requeueable_ids, true);
     }
 }

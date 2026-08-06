@@ -234,4 +234,54 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
         $wpdb->update($table, $data, ['video_id' => $video_id], $formats, ['%d']);
     }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int      $video_id        The video post ID.
+     * @param int|null $poster_image_id The Cloudflare Images ID to use as the poster override, or null to clear it.
+     * @param int|null $og_image_id     The Cloudflare Images ID to use as the OG-image override, or null to clear it.
+     */
+    public function update_images(int $video_id, ?int $poster_image_id, ?int $og_image_id): void
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
+        $wpdb->update(
+            $wpdb->prefix . 'tube_video_metadata',
+            [
+                'poster_image_id' => $poster_image_id,
+                'og_image_id'     => $og_image_id,
+                'updated_at'      => current_time('mysql', true),
+            ],
+            ['video_id' => $video_id],
+            ['%d', '%d', '%s'],
+            ['%d']
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int $video_id               The video post ID.
+     * @param int $thumbnail_time_seconds The offset, in seconds, to extract the default thumbnail from.
+     */
+    public function update_thumbnail_time(int $video_id, int $thumbnail_time_seconds): void
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
+        $wpdb->update(
+            $wpdb->prefix . 'tube_video_metadata',
+            [
+                'thumbnail_time_seconds' => $thumbnail_time_seconds,
+                'updated_at'             => current_time('mysql', true),
+            ],
+            ['video_id' => $video_id],
+            ['%d', '%s'],
+            ['%d']
+        );
+    }
 }

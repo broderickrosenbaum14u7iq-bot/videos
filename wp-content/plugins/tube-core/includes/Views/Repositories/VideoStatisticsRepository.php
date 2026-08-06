@@ -147,6 +147,69 @@ final class VideoStatisticsRepository implements VideoStatisticsRepositoryInterf
     }
 
     /**
+     * {@inheritDoc}
+     *
+     * @param 'views_total'|'views_today'|'views_7d'|'views_30d' $order_by Column to sort by, highest first.
+     * @param int                                                $limit    Maximum number of videos to return.
+     * @param int                                                $offset   Number of videos to skip, for pagination.
+     *
+     * @return list<array{video_id: int, views_total: int, views_today: int, views_7d: int, views_30d: int}>
+     */
+    public function list_all(string $order_by, int $limit, int $offset): array
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        // $order_by is constrained by this method's own PHPStan literal-union
+        // parameter type, never caller-raw SQL text -- the same "fixed
+        // literal, not caller-supplied" justification self::top_by() already
+        // documents for its own {$column} interpolation.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                'SELECT video_id, views_total, views_today, views_7d, views_30d FROM %i'
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared -- see the comment above.
+                    . " ORDER BY {$order_by} DESC LIMIT %d OFFSET %d",
+                $wpdb->prefix . 'tube_video_statistics',
+                $limit,
+                $offset
+            ),
+            ARRAY_A
+        );
+
+        /** @var array<int, array{video_id: string, views_total: string, views_today: string, views_7d: string, views_30d: string}> $rows */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+        $rows = (array) $rows;
+
+        $result = [];
+
+        foreach ($rows as $row) {
+            $result[] = [
+                'video_id'    => (int) $row['video_id'],
+                'views_total' => (int) $row['views_total'],
+                'views_today' => (int) $row['views_today'],
+                'views_7d'    => (int) $row['views_7d'],
+                'views_30d'   => (int) $row['views_30d'],
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function count_all(): int
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
+        $count = $wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM %i', $wpdb->prefix . 'tube_video_statistics'));
+
+        return null === $count ? 0 : (int) $count;
+    }
+
+    /**
      * Shared implementation behind self::top_by_views_total()/self::top_by_views_7d():
      * an indexed `ORDER BY {$column} DESC LIMIT` — the column name is
      * never caller-supplied (both public methods pass a fixed literal),

@@ -85,4 +85,50 @@ interface ImportQueueRepositoryInterface
      * @return array<string, int> Status value => count. Only statuses with at least one item are present.
      */
     public function status_counts(): array;
+
+    /**
+     * List queue items, newest first, optionally filtered by status — the
+     * read path `tube-admin`'s import dashboard (Phase 10) uses to show
+     * real recent activity (and error messages for failed items), not
+     * just the aggregate counts {@see self::status_counts()} gives.
+     *
+     * @param ImportStatus|null $status Only items with this status, or every status if null.
+     * @param int               $limit  Maximum number of items to return.
+     * @param int               $offset Number of items to skip, for pagination.
+     *
+     * @return list<array{
+     *     id: int,
+     *     source_key: string,
+     *     status: string,
+     *     attempts: int,
+     *     max_attempts: int,
+     *     last_error: string|null,
+     *     video_id: int|null,
+     *     created_at: string,
+     *     updated_at: string
+     * }>
+     */
+    public function list_items(?ImportStatus $status, int $limit, int $offset): array;
+
+    /**
+     * Count queue items, optionally filtered by status — pairs with
+     * {@see self::list_items()} for pagination totals.
+     *
+     * @param ImportStatus|null $status Only items with this status, or every status if null.
+     */
+    public function count_items(?ImportStatus $status): int;
+
+    /**
+     * Reset one `failed` item back to `pending` (attempts to 0, error
+     * cleared) for an immediate manual retry — `tube-admin`'s per-row
+     * "Retry" action (Phase 10). Distinct from
+     * {@see self::mark_failed_or_retry()}'s automatic within-budget retry:
+     * this is an explicit operator override of an item that already
+     * exhausted its attempts.
+     *
+     * @param int $id The queue item's ID.
+     *
+     * @return bool True if a `failed` item with this ID was found and reset; false if no such item exists.
+     */
+    public function requeue(int $id): bool;
 }

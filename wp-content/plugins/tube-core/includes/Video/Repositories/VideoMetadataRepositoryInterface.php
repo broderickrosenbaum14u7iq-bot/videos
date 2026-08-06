@@ -103,4 +103,27 @@ interface VideoMetadataRepositoryInterface
      * @param int|null       $duration_seconds The video's duration, if the caller knows it; left unchanged if null.
      */
     public function update_status(int $video_id, CfStreamStatus $status, ?int $duration_seconds): void;
+
+    /**
+     * Update a video's custom poster/OG image overrides, per
+     * ARCHITECTURE.md §8 — both are Cloudflare Images IDs, never URLs.
+     * `tube-admin`'s custom-poster upload UI (Phase 10) is the only
+     * writer of these two columns; a null value clears the override back
+     * to the default Cloudflare Stream thumbnail.
+     *
+     * @param int      $video_id        The video post ID.
+     * @param int|null $poster_image_id The Cloudflare Images ID to use as the poster override, or null to clear it.
+     * @param int|null $og_image_id     The Cloudflare Images ID to use as the OG-image override, or null to clear it.
+     */
+    public function update_images(int $video_id, ?int $poster_image_id, ?int $og_image_id): void;
+
+    /**
+     * Update a video's thumbnail source-frame offset (the second within
+     * the Stream asset the default poster is extracted from). Written by
+     * `tube-admin`'s video metadata management screen (Phase 10).
+     *
+     * @param int $video_id                The video post ID.
+     * @param int $thumbnail_time_seconds  The offset, in seconds, to extract the default thumbnail from.
+     */
+    public function update_thumbnail_time(int $video_id, int $thumbnail_time_seconds): void;
 }

@@ -296,4 +296,136 @@ final class ImportQueueRepository implements ImportQueueRepositoryInterface
 
         return $result;
     }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param ImportStatus|null $status Only items with this status, or every status if null.
+     * @param int               $limit  Maximum number of items to return.
+     * @param int               $offset Number of items to skip, for pagination.
+     *
+     * @return list<array{
+     *     id: int,
+     *     source_key: string,
+     *     status: string,
+     *     attempts: int,
+     *     max_attempts: int,
+     *     last_error: string|null,
+     *     video_id: int|null,
+     *     created_at: string,
+     *     updated_at: string
+     * }>
+     */
+    public function list_items(?ImportStatus $status, int $limit, int $offset): array
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        $table   = $wpdb->prefix . 'tube_import_queue';
+        $columns = 'id, source_key, status, attempts, max_attempts, last_error, video_id, created_at, updated_at';
+
+        if (null === $status) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
+            $rows = $wpdb->get_results(
+                $wpdb->prepare(
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared -- $columns is a fixed internal constant string, never caller-supplied; every actual value is still a %i/%d-bound argument below.
+                    "SELECT {$columns} FROM %i ORDER BY id DESC LIMIT %d OFFSET %d",
+                    $table,
+                    $limit,
+                    $offset
+                ),
+                ARRAY_A
+            );
+        } else {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
+            $rows = $wpdb->get_results(
+                $wpdb->prepare(
+                    // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared -- $columns is a fixed internal constant string, never caller-supplied; every actual value is still a %i/%s/%d-bound argument below.
+                    "SELECT {$columns} FROM %i WHERE status = %s ORDER BY id DESC LIMIT %d OFFSET %d",
+                    $table,
+                    $status->value,
+                    $limit,
+                    $offset
+                ),
+                ARRAY_A
+            );
+        }
+
+        /** @var array<int, array{id: string, source_key: string, status: string, attempts: string, max_attempts: string, last_error: string|null, video_id: string|null, created_at: string, updated_at: string}> $rows */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+        $rows = (array) $rows;
+
+        $result = [];
+
+        foreach ($rows as $row) {
+            $result[] = [
+                'id'           => (int) $row['id'],
+                'source_key'   => $row['source_key'],
+                'status'       => $row['status'],
+                'attempts'     => (int) $row['attempts'],
+                'max_attempts' => (int) $row['max_attempts'],
+                'last_error'   => $row['last_error'],
+                'video_id'     => null === $row['video_id'] ? null : (int) $row['video_id'],
+                'created_at'   => $row['created_at'],
+                'updated_at'   => $row['updated_at'],
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param ImportStatus|null $status Only items with this status, or every status if null.
+     */
+    public function count_items(?ImportStatus $status): int
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        $table = $wpdb->prefix . 'tube_import_queue';
+
+        if (null === $status) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
+            $count = $wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM %i', $table));
+        } else {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
+            $count = $wpdb->get_var(
+                $wpdb->prepare('SELECT COUNT(*) FROM %i WHERE status = %s', $table, $status->value)
+            );
+        }
+
+        return null === $count ? 0 : (int) $count;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int $id The queue item's ID.
+     */
+    public function requeue(int $id): bool
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
+        $wpdb->update(
+            $wpdb->prefix . 'tube_import_queue',
+            [
+                'status'     => ImportStatus::Pending->value,
+                'attempts'   => 0,
+                'last_error' => null,
+                'claimed_at' => null,
+                'updated_at' => current_time('mysql', true),
+            ],
+            [
+                'id'     => $id,
+                'status' => ImportStatus::Failed->value,
+            ],
+            ['%s', '%d', '%s', '%s', '%s'],
+            ['%d', '%s']
+        );
+
+        return $wpdb->rows_affected > 0;
+    }
 }

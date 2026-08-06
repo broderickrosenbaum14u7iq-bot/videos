@@ -79,4 +79,26 @@ interface VideoStatisticsRepositoryInterface
      * @return list<array{video_id: int, count: int}> Highest `views_7d` first.
      */
     public function top_by_views_7d(int $limit): array;
+
+    /**
+     * Paged listing of every video's full statistics row, sorted by a
+     * caller-chosen column — the read path `tube-admin`'s statistics
+     * dashboard (Phase 10) uses to show `views_total`/`views_today`/
+     * `views_7d`/`views_30d` together in one sortable table, unlike
+     * {@see self::top_by_views_total()}/{@see self::top_by_views_7d()},
+     * which each return only the one column they sort by.
+     *
+     * @param 'views_total'|'views_today'|'views_7d'|'views_30d' $order_by Column to sort by, highest first.
+     * @param int                                                $limit    Maximum number of videos to return.
+     * @param int                                                $offset   Number of videos to skip, for pagination.
+     *
+     * @return list<array{video_id: int, views_total: int, views_today: int, views_7d: int, views_30d: int}>
+     */
+    public function list_all(string $order_by, int $limit, int $offset): array;
+
+    /**
+     * Total number of rows in `wp_tube_video_statistics` — pairs with
+     * {@see self::list_all()} for pagination totals.
+     */
+    public function count_all(): int;
 }
