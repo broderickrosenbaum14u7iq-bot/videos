@@ -28,7 +28,7 @@ $tube_theme_last_index = count($tube_theme_items) - 1;
 <nav class="breadcrumbs" aria-label="<?php echo esc_attr__('Breadcrumb', 'tube-theme'); ?>">
     <?php foreach ($tube_theme_items as $tube_theme_index => $tube_theme_item) : ?>
         <?php if ($tube_theme_index === $tube_theme_last_index) : ?>
-            <span><?php echo esc_html($tube_theme_item['name']); ?></span>
+            <span aria-current="page"><?php echo esc_html($tube_theme_item['name']); ?></span>
         <?php else : ?>
             <a href="<?php echo esc_url($tube_theme_item['url']); ?>">
                 <?php echo esc_html($tube_theme_item['name']); ?>

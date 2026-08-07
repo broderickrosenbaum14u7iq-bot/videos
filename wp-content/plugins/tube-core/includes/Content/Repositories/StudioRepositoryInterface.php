@@ -38,6 +38,17 @@ interface StudioRepositoryInterface
     public function find_by_slug(string $slug): ?Studio;
 
     /**
+     * Find every studio in `$studio_ids` in one batched query — the bulk
+     * counterpart to {@see self::find()}. Same shape and justification as
+     * `ActorRepositoryInterface::find_many()`; see its docblock.
+     *
+     * @param int[] $studio_ids The studio row IDs to fetch.
+     *
+     * @return array<int, Studio> Keyed by studio ID; an ID with no matching row is simply absent, not null.
+     */
+    public function find_many(array $studio_ids): array;
+
+    /**
      * The studio IDs a video is currently assigned to, per `wp_tube_video_studios`.
      *
      * @param int $video_id The video post ID.

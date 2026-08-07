@@ -1,6 +1,12 @@
-# Release 1.0.1
+# Release 1.1.0
 
-**Status: Production-ready.** Tagged `v1.0.1` on `origin/main`, superseding `v1.0.0`. `v1.0.0` fataled on a clean production deploy — see "1.0.1 hotfix" below — and should not be deployed; deploy `v1.0.1` instead. This is the project's first release — a from-scratch rebuild of a WordPress-based video tube site, replacing a prior installation the original site audit found running nulled/third-party plugin code.
+**Status: Production-ready, pending a manual browser QA pass (see below) before production traffic.** Tagged `v1.1.0` on `origin/main`, superseding `v1.0.1`. `v1.0.0` fataled on a clean production deploy — see "1.0.1 hotfix" below — and should not be deployed; deploy `v1.1.0` instead. This is the project's first release — a from-scratch rebuild of a WordPress-based video tube site, replacing a prior installation the original site audit found running nulled/third-party plugin code.
+
+## 1.1.0: Phase 13 — Production UI (2026-08-07)
+
+A full visual redesign of `tube-theme` — the project's first real UI design work; every prior release shipped `tube-theme` deliberately unstyled (`PHASE-8.md`'s own design decision). User-commissioned (not part of the original 0–12 phase roadmap `RELEASE.md`/`ARCHITECTURE.md` previously said was complete). Dark theme, hero banner, mega menu, infinite scroll, actor/studio pages, a modern search page — hand-written CSS/JS, no page builder, no CSS framework, no build tooling. Plus a small set of additive `tube-core`/`tube-player` template tags the presentation layer genuinely needed. Full account in `CHANGELOG.md`'s `[1.1.0]` entry and `PHASE-13.md` (architecture drift report, design decisions, live verification, benchmark comparison against 1.0.1, and two disclosed limitations: no real-browser QA was performed this session — see `PHASE-13.md` §10 for exactly what was and wasn't verified — and the Cloudflare Images `avatar` variant needs configuring before actor/studio photos will render in production).
+
+**Before deploying this release to production**, in addition to the standard deploy procedure: (1) do a manual browser pass covering the mega menu, mobile nav, infinite scroll, and the 640/900/1200px responsive breakpoints — none of this was interaction-tested in a real browser this session (no browser-automation tool was available); (2) confirm the Cloudflare Images `grid_card`/`hero`/`og_image`/`avatar` variants are configured in the production Cloudflare account (`avatar` is new this release; the other three are a pre-existing gap this release didn't introduce or fix).
 
 ## 1.0.1 hotfix (2026-08-07)
 
@@ -55,4 +61,4 @@ If production traffic ever proves one of these actually necessary, the path back
 
 ## Project status after this release
 
-Per the explicit instruction this release was built under: **this is the final planned phase.** No Phase 13 begins without a new, explicit instruction to do so.
+Phase 12 was the final phase of the original 0–12 roadmap; Phase 13 (Production UI) was a subsequent, separately user-commissioned phase, not an automatic continuation. Per that same standing rule: **no further phase begins without a new, explicit instruction to do so.** If resuming this project for anything, this file, `CHANGELOG.md`, and `PHASE-13.md` are the fastest orientation documents for current status.

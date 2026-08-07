@@ -71,3 +71,73 @@ function tube_core_get_current_studio(): ?Studio
 
     return $studio instanceof Studio ? $studio : null;
 }
+
+/**
+ * Paged listing of every actor, alphabetical by name — powers Phase 13's
+ * actor directory page.
+ *
+ * @param int $limit  Maximum number of actors to return.
+ * @param int $offset Number of actors to skip, for pagination.
+ *
+ * @return Actor[]
+ */
+function tube_core_list_actors(int $limit, int $offset = 0): array
+{
+    return Tube_Core_Plugin::instance()->actor_repository()->list_all($limit, $offset);
+}
+
+/**
+ * Total number of actors — pairs with tube_core_list_actors() for pagination totals.
+ */
+function tube_core_count_actors(): int
+{
+    return Tube_Core_Plugin::instance()->actor_repository()->count_all();
+}
+
+/**
+ * Paged listing of every studio, alphabetical by name — powers Phase
+ * 13's studio directory page and mega menu.
+ *
+ * @param int $limit  Maximum number of studios to return.
+ * @param int $offset Number of studios to skip, for pagination.
+ *
+ * @return Studio[]
+ */
+function tube_core_list_studios(int $limit, int $offset = 0): array
+{
+    return Tube_Core_Plugin::instance()->studio_repository()->list_all($limit, $offset);
+}
+
+/**
+ * Total number of studios — pairs with tube_core_list_studios() for pagination totals.
+ */
+function tube_core_count_studios(): int
+{
+    return Tube_Core_Plugin::instance()->studio_repository()->count_all();
+}
+
+/**
+ * Find every actor in `$actor_ids` in one batched query — resolves a
+ * video grid's `SearchIndexRow::$actor_ids` into names/links for Phase
+ * 13's video-card "starring" badges without one query per card.
+ *
+ * @param int[] $actor_ids The actor row IDs to fetch.
+ *
+ * @return array<int, Actor> Keyed by actor ID; an unknown ID is simply absent.
+ */
+function tube_core_get_actors(array $actor_ids): array
+{
+    return Tube_Core_Plugin::instance()->actor_repository()->find_many($actor_ids);
+}
+
+/**
+ * Find every studio in `$studio_ids` in one batched query. Same shape as tube_core_get_actors().
+ *
+ * @param int[] $studio_ids The studio row IDs to fetch.
+ *
+ * @return array<int, Studio> Keyed by studio ID; an unknown ID is simply absent.
+ */
+function tube_core_get_studios(array $studio_ids): array
+{
+    return Tube_Core_Plugin::instance()->studio_repository()->find_many($studio_ids);
+}

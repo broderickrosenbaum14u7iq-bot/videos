@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace Tube_Core\Content\Repositories;
 
+use RuntimeException;
 use Tube_Core\Content\Studio;
 
 /**
@@ -16,6 +17,9 @@ use Tube_Core\Content\Studio;
  * (StudioRepositoryInterface). Direct `$wpdb` access is the same
  * documented, intentional exception every dedicated-table repository in
  * this project uses (ARCHITECTURE.md §2.5/§11).
+ *
+ * `find()`/`find_many()` share a request-lifetime cache — same shape and
+ * justification as `ActorRepository`; see its docblock.
  */
 final class StudioRepository implements StudioRepositoryInterface
 {
@@ -25,12 +29,24 @@ final class StudioRepository implements StudioRepositoryInterface
     private const COLUMNS = 'id, name, slug, description, logo_image_id, website_url, parent_id';
 
     /**
+     * Request-lifetime cache: studio_id => resolved result. See
+     * `ActorRepository::$cache` for the array_key_exists()/null semantics.
+     *
+     * @var array<int, Studio|null>
+     */
+    private array $cache = [];
+
+    /**
      * {@inheritDoc}
      *
      * @param int $studio_id The studio's row ID.
      */
     public function find(int $studio_id): ?Studio
     {
+        if (array_key_exists($studio_id, $this->cache)) {
+            return $this->cache[ $studio_id ];
+        }
+
         global $wpdb;
         /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
 
@@ -46,13 +62,87 @@ final class StudioRepository implements StudioRepositoryInterface
         );
 
         if (! is_array($row)) {
+            $this->cache[ $studio_id ] = null;
+
             return null;
         }
 
         // Same documented wordpress-stubs gap as
         // Tube_Search\Index\SearchIndexRepository::find().
         /** @var array<string, string|null> $row */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
-        return self::hydrate($row);
+        $studio                    = self::hydrate($row);
+        $this->cache[ $studio_id ] = $studio;
+
+        return $studio;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int[] $studio_ids The studio row IDs to fetch.
+     *
+     * @return array<int, Studio>
+     *
+     * @throws RuntimeException If the query template is malformed (a bug in this method, not in any argument).
+     */
+    public function find_many(array $studio_ids): array
+    {
+        $studio_ids = array_values(array_unique($studio_ids));
+
+        $uncached_ids = array_values(
+            array_filter($studio_ids, fn (int $studio_id): bool => ! array_key_exists($studio_id, $this->cache))
+        );
+
+        if ([] !== $uncached_ids) {
+            global $wpdb;
+            /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+            $placeholders = implode(', ', array_fill(0, count($uncached_ids), '%d'));
+
+            $sql = $wpdb->prepare(
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared -- self::COLUMNS is a fixed internal constant and $placeholders is a fixed-shape string of literal "%d" tokens (one per element of $uncached_ids); neither is caller-supplied, and every actual value is still a %i/%d-bound argument below.
+                'SELECT ' . self::COLUMNS . " FROM %i WHERE id IN ({$placeholders})",
+                array_merge([$wpdb->prefix . 'tube_studios'], $uncached_ids)
+            );
+
+            if (null === $sql) {
+                throw new RuntimeException(
+                    'wpdb::prepare() returned null for the find_many() query in ' . self::class . '.'
+                );
+            }
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- dedicated custom table (§2.5, §11); $sql *is* $wpdb->prepare()'d above.
+            $rows = $wpdb->get_results($sql, ARRAY_A);
+
+            /** @var array<int, array<string, string|null>> $rows */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+            $rows = (array) $rows;
+
+            $found_ids = [];
+
+            foreach ($rows as $row) {
+                $studio                     = self::hydrate($row);
+                $this->cache[ $studio->id ] = $studio;
+                $found_ids[ $studio->id ]   = true;
+            }
+
+            foreach ($uncached_ids as $uncached_id) {
+                if (! isset($found_ids[ $uncached_id ])) {
+                    $this->cache[ $uncached_id ] = null;
+                }
+            }
+        }
+
+        $result = [];
+
+        foreach ($studio_ids as $studio_id) {
+            $studio = $this->cache[ $studio_id ];
+
+            if (null !== $studio) {
+                $result[ $studio_id ] = $studio;
+            }
+        }
+
+        return $result;
     }
 
     /**

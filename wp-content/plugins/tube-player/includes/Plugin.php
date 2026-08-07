@@ -11,6 +11,7 @@ namespace Tube_Player;
 
 use Tube_Player\Render\ImageHtmlRenderer;
 use Tube_Player\Render\PlayerHtmlRenderer;
+use Tube_Player\Render\ProfileImageHtmlRenderer;
 use Tube_Player\Video\Cloudflare\CloudflareImagesUrlBuilder;
 use Tube_Player\Video\Cloudflare\CloudflareStreamProvider;
 use Tube_Player\Video\VideoProviderInterface;
@@ -74,6 +75,13 @@ final class Plugin
      * @var PlayerHtmlRenderer|null
      */
     private ?PlayerHtmlRenderer $player_renderer = null;
+
+    /**
+     * Lazily created by self::profile_image_renderer().
+     *
+     * @var ProfileImageHtmlRenderer|null
+     */
+    private ?ProfileImageHtmlRenderer $profile_image_renderer = null;
 
     /**
      * Private: use self::instance() instead.
@@ -164,6 +172,20 @@ final class Plugin
         }
 
         return $this->player_renderer;
+    }
+
+    /**
+     * The actor/studio photo `<img>` renderer, per Phase 13.
+     *
+     * Public: `includes/template-tags.php`'s `tube_player_get_profile_image_html()` is a thin wrapper around this.
+     */
+    public function profile_image_renderer(): ProfileImageHtmlRenderer
+    {
+        if (null === $this->profile_image_renderer) {
+            $this->profile_image_renderer = new ProfileImageHtmlRenderer($this->images_url_builder());
+        }
+
+        return $this->profile_image_renderer;
     }
 
     /**

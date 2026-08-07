@@ -43,7 +43,7 @@ if ($tube_theme_total_pages < 2) {
         </a>
     <?php endif; ?>
 
-    <span class="current">
+    <span class="current" aria-current="page">
         <?php
         $tube_theme_page_str        = (string) $tube_theme_page;
         $tube_theme_total_pages_str = (string) $tube_theme_total_pages;

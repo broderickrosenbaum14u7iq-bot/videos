@@ -45,5 +45,15 @@ final class ImageSizeTest extends TestCase
         self::assertSame(ImageSize::GridCard, ImageSize::tryFrom('grid_card'));
         self::assertSame(ImageSize::Hero, ImageSize::tryFrom('hero'));
         self::assertSame(ImageSize::OgImage, ImageSize::tryFrom('og_image'));
+        self::assertSame(ImageSize::Avatar, ImageSize::tryFrom('avatar'));
+    }
+
+    /**
+     * `Avatar` (Phase 13) is square — an actor/studio photo is a
+     * headshot/logo crop, not a 16:9 video frame.
+     */
+    public function test_avatar_is_square(): void
+    {
+        self::assertSame(ImageSize::Avatar->width(), ImageSize::Avatar->height());
     }
 }

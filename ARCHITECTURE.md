@@ -260,6 +260,7 @@ Unchanged from Revision 2 (§6 there), with one addition specific to this revisi
 | 10 | `tube-admin`: import dashboard, statistics dashboard, custom-poster upload UI, bulk tools, settings UI |
 | 11 | Scale hardening: read-replica routing, partition rollout/retention verification, load test at simulated 500k-video / high-pageview volume, edge cache tuning |
 | 12 | QA, security review (REST auth/nonces, `$wpdb->prepare()` audit across all six tables, migration rollback drill), staging → production cutover |
+| 13 | `tube-theme`: full production UI (dark theme, hero, mega menu, infinite scroll, actor/studio pages, modern search) — plus minimal additive `tube-core`/`tube-player` template tags the presentation layer needed (actor/studio listing + bulk lookup, actor/studio photo rendering). User-commissioned post-1.0.0 phase, not part of this table's original 0–12 scope; see `PHASE-13.md` and `ARCHITECTURE-CHANGELOG.md` |
 
 ---
 

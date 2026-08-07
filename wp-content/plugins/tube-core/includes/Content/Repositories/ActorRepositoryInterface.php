@@ -56,6 +56,20 @@ interface ActorRepositoryInterface
     public function find_by_slug(string $slug): ?Actor;
 
     /**
+     * Find every actor in `$actor_ids` in one batched query — the bulk
+     * counterpart to {@see self::find()}, needed to resolve a video
+     * grid's worth of `SearchIndexRow::$actor_ids` into names/links
+     * without one query per card (Phase 13, same N+1 concern
+     * `VideoMetadataRepositoryInterface::find_many()` already exists to
+     * solve for video metadata).
+     *
+     * @param int[] $actor_ids The actor row IDs to fetch.
+     *
+     * @return array<int, Actor> Keyed by actor ID; an ID with no matching row is simply absent, not null.
+     */
+    public function find_many(array $actor_ids): array;
+
+    /**
      * The actor IDs a video is currently assigned to, per `wp_tube_video_actors`.
      *
      * @param int $video_id The video post ID.

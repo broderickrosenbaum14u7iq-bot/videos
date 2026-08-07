@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace Tube_Core\Content\Repositories;
 
+use RuntimeException;
 use Tube_Core\Content\Actor;
 
 /**
@@ -17,6 +18,20 @@ use Tube_Core\Content\Actor;
  * documented, intentional exception every dedicated-table repository in
  * this project uses (ARCHITECTURE.md §2.5/§11) — no WP_Query/
  * WP_Meta_Query equivalent exists for these tables.
+ *
+ * `find()`/`find_many()` share a request-lifetime, plugin-instance-scoped
+ * in-memory cache — the same shape and justification as
+ * `Tube_Core\Video\Repositories\VideoMetadataRepository` (added Phase 11
+ * for the identical reason: `tube-player`'s per-card template tags were
+ * issuing one query per grid item). This class's own instance is
+ * memoized for the whole request by `Tube_Core\Plugin::actor_repository()`,
+ * so the cache genuinely lives for the request, not just one call. Safe
+ * to add with no invalidation logic: nothing in `ActorRepositoryInterface`
+ * mutates an existing row's `name`/`slug`/`bio`/`photo_image_id` after
+ * creation (`create()` only inserts a new row; `replace_for_video()`/
+ * `bulk_add()`/`bulk_remove()` only touch the relationship table and the
+ * `video_count` column, which isn't part of the `Actor` DTO this cache
+ * stores).
  */
 final class ActorRepository implements ActorRepositoryInterface
 {
@@ -26,12 +41,26 @@ final class ActorRepository implements ActorRepositoryInterface
     private const COLUMNS = 'id, name, slug, bio, photo_image_id';
 
     /**
+     * Request-lifetime cache: actor_id => resolved result. A key's mere
+     * presence (checked via array_key_exists(), not isset()) means "this
+     * ID has already been resolved," since the value itself is
+     * legitimately null for an ID with no row.
+     *
+     * @var array<int, Actor|null>
+     */
+    private array $cache = [];
+
+    /**
      * {@inheritDoc}
      *
      * @param int $actor_id The actor's row ID.
      */
     public function find(int $actor_id): ?Actor
     {
+        if (array_key_exists($actor_id, $this->cache)) {
+            return $this->cache[ $actor_id ];
+        }
+
         global $wpdb;
         /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
 
@@ -47,13 +76,87 @@ final class ActorRepository implements ActorRepositoryInterface
         );
 
         if (! is_array($row)) {
+            $this->cache[ $actor_id ] = null;
+
             return null;
         }
 
         // Same documented wordpress-stubs gap as
         // Tube_Search\Index\SearchIndexRepository::find().
         /** @var array<string, string|null> $row */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
-        return self::hydrate($row);
+        $actor                    = self::hydrate($row);
+        $this->cache[ $actor_id ] = $actor;
+
+        return $actor;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int[] $actor_ids The actor row IDs to fetch.
+     *
+     * @return array<int, Actor>
+     *
+     * @throws RuntimeException If the query template is malformed (a bug in this method, not in any argument).
+     */
+    public function find_many(array $actor_ids): array
+    {
+        $actor_ids = array_values(array_unique($actor_ids));
+
+        $uncached_ids = array_values(
+            array_filter($actor_ids, fn (int $actor_id): bool => ! array_key_exists($actor_id, $this->cache))
+        );
+
+        if ([] !== $uncached_ids) {
+            global $wpdb;
+            /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+            $placeholders = implode(', ', array_fill(0, count($uncached_ids), '%d'));
+
+            $sql = $wpdb->prepare(
+                // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared -- self::COLUMNS is a fixed internal constant and $placeholders is a fixed-shape string of literal "%d" tokens (one per element of $uncached_ids); neither is caller-supplied, and every actual value is still a %i/%d-bound argument below.
+                'SELECT ' . self::COLUMNS . " FROM %i WHERE id IN ({$placeholders})",
+                array_merge([$wpdb->prefix . 'tube_actors'], $uncached_ids)
+            );
+
+            if (null === $sql) {
+                throw new RuntimeException(
+                    'wpdb::prepare() returned null for the find_many() query in ' . self::class . '.'
+                );
+            }
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- dedicated custom table (§2.5, §11); $sql *is* $wpdb->prepare()'d above.
+            $rows = $wpdb->get_results($sql, ARRAY_A);
+
+            /** @var array<int, array<string, string|null>> $rows */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+            $rows = (array) $rows;
+
+            $found_ids = [];
+
+            foreach ($rows as $row) {
+                $actor                     = self::hydrate($row);
+                $this->cache[ $actor->id ] = $actor;
+                $found_ids[ $actor->id ]   = true;
+            }
+
+            foreach ($uncached_ids as $uncached_id) {
+                if (! isset($found_ids[ $uncached_id ])) {
+                    $this->cache[ $uncached_id ] = null;
+                }
+            }
+        }
+
+        $result = [];
+
+        foreach ($actor_ids as $actor_id) {
+            $actor = $this->cache[ $actor_id ];
+
+            if (null !== $actor) {
+                $result[ $actor_id ] = $actor;
+            }
+        }
+
+        return $result;
     }
 
     /**

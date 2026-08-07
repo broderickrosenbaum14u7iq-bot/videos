@@ -137,3 +137,31 @@ function tube_player_get_embed_html(int $video_id, array $args = []): string
         $args
     );
 }
+
+/**
+ * Render an actor/studio photo's `<img>` tag (Phase 13) — for
+ * `Tube_Core\Content\Actor::$photo_image_id`/`Studio::$logo_image_id`,
+ * never a video (see `ProfileImageHtmlRenderer`'s docblock for why this
+ * is a separate template tag from `tube_player_get_image_html()`, not an
+ * overload of it). No stylesheet is enqueued here — unlike
+ * `tube_player_get_image_html()`/`tube_player_get_embed_html()`,
+ * nothing in `assets/css/tube-player.css` targets this markup; sizing/
+ * shape (e.g. a circular crop) is theme-layer presentation.
+ *
+ * @param int|null                   $image_id A Cloudflare Images ID, or null for no photo.
+ * @param string                     $size     `ImageSize` value; defaults to `avatar`.
+ * @param array<string, bool|string> $args     See `ProfileImageHtmlRenderer::render()`. All optional.
+ *
+ * @return string The `<img>` tag, or '' if the size is unrecognized, `$image_id` is null, or Cloudflare Images
+ *                isn't configured.
+ */
+function tube_player_get_profile_image_html(?int $image_id, string $size = 'avatar', array $args = []): string
+{
+    $resolved_size = ImageSize::tryFrom($size);
+
+    if (null === $resolved_size) {
+        return '';
+    }
+
+    return \Tube_Player\Plugin::instance()->profile_image_renderer()->render($image_id, $resolved_size, $args);
+}

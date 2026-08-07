@@ -11,6 +11,11 @@
  * - `page` (int)
  * - `page_url` (callable(int): string)
  * - `empty_message` (string)
+ * - `heading_tag` (string, optional, `h1` or `h2`; default `h1`) — actor/
+ *   studio archives (Phase 13) pass `h2` since `template-parts/profile-header.php`
+ *   already rendered the page's one `<h1>` (the person/studio's name);
+ *   category/tag archives have no profile header, so their title here
+ *   stays the page's real `<h1>`.
  *
  * @package Tube_Theme
  */
@@ -55,35 +60,32 @@ $tube_theme_page_url = $args['page_url'];
 /** @var string $tube_theme_empty_message */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
 $tube_theme_empty_message = $args['empty_message'];
 
+$tube_theme_heading_tag = isset($args['heading_tag']) && 'h2' === $args['heading_tag'] ? 'h2' : 'h1';
+
 ?>
 
-<h1><?php echo esc_html($tube_theme_title); ?></h1>
+<?php if ('h2' === $tube_theme_heading_tag) : ?>
+    <h2 class="section-heading"><?php echo esc_html($tube_theme_title); ?></h2>
+<?php else : ?>
+    <h1><?php echo esc_html($tube_theme_title); ?></h1>
+<?php endif; ?>
 
 <?php if ('' !== $tube_theme_description) : ?>
     <div class="archive-description"><?php echo wp_kses_post($tube_theme_description); ?></div>
 <?php endif; ?>
 
-<?php if ([] === $tube_theme_result->items) : ?>
-    <p><?php echo esc_html($tube_theme_empty_message); ?></p>
-<?php else : ?>
-    <?php tube_theme_prime_video_grid($tube_theme_result->items); ?>
-    <div class="video-grid">
-        <?php foreach ($tube_theme_result->items as $tube_theme_video) : ?>
-            <?php get_template_part('template-parts/video-card', null, ['video' => $tube_theme_video]); ?>
-        <?php endforeach; ?>
-    </div>
+<?php
+$tube_theme_total_pages = (int) ceil($tube_theme_result->total / $tube_theme_result->per_page);
 
-    <?php
-    $tube_theme_total_pages = (int) ceil($tube_theme_result->total / $tube_theme_result->per_page);
-
-    get_template_part(
-        'template-parts/pagination',
-        null,
-        [
-            'page'        => $tube_theme_page,
-            'total_pages' => $tube_theme_total_pages,
-            'page_url'    => $tube_theme_page_url,
-        ]
-    );
-    ?>
-<?php endif; ?>
+get_template_part(
+    'template-parts/video-grid',
+    null,
+    [
+        'videos'        => $tube_theme_result->items,
+        'empty_message' => $tube_theme_empty_message,
+        'page'          => $tube_theme_page,
+        'total_pages'   => $tube_theme_total_pages,
+        'page_url'      => $tube_theme_page_url,
+    ]
+);
+?>

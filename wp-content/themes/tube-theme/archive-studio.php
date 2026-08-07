@@ -39,11 +39,22 @@ if (null !== $tube_theme_studio) {
     );
 
     get_template_part(
+        'template-parts/profile-header',
+        null,
+        [
+            'name'     => $tube_theme_studio->name,
+            'bio'      => $tube_theme_studio->description,
+            'image_id' => $tube_theme_studio->logo_image_id,
+        ]
+    );
+
+    get_template_part(
         'template-parts/archive-listing',
         null,
         [
-            'title'         => $tube_theme_studio->name,
-            'description'   => $tube_theme_studio->description ?? '',
+            'title'         => __('Videos', 'tube-theme'),
+            'description'   => '',
+            'heading_tag'   => 'h2',
             'result'        => $tube_theme_result,
             'page'          => $tube_theme_page,
             'page_url'      => static fn (int $tube_theme_target_page): string => $tube_theme_target_page > 1

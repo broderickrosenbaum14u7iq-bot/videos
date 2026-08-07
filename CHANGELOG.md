@@ -2,6 +2,28 @@
 
 All notable changes to this project. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this project did not tag intermediate releases during development (every plugin/theme carried `0.1.0` internally through Phase 11), so **1.0.0 is the first tagged release** and this entry summarizes everything that went into it, phase by phase. Future releases will get their own dated entry above this one.
 
+## [1.1.0] — 2026-08-07
+
+Phase 13: Production UI — a full visual redesign of `tube-theme` (dark theme, hero banner, header mega menu, video-card hover effects, infinite scroll, actor/studio pages, a modern search page), hand-written CSS/JS with no page builder, no CSS framework, and no build tooling. User-commissioned post-1.0.0 phase (`PHASE-13.md`, `ARCHITECTURE-CHANGELOG.md`). Only `tube-core`, `tube-player`, and `tube-theme` changed this release — `tube-cache`/`tube-search`/`tube-seo`/`tube-admin` are unaffected and stay at `1.0.1`.
+
+### Added
+
+- **Theme** — dark-only design system (`#0b0e14` background, `#ff3d5a` accent); sticky header with a "Categories" mega menu (categories + "Browse by Studio") and a mobile off-canvas nav; a homepage hero banner auto-populated from the current #1 trending video; video cards with a hover zoom/play overlay, a duration badge, and a "starring" actor/studio badge; infinite scroll on category/tag/actor/studio archives and search results (progressive enhancement over real paginated URLs, per `ARCHITECTURE.md` §15.2's already-specified design — never a distinct AJAX-only page state); actor/studio profile pages (photo, name, bio) and new paginated actor/studio directory pages (`page-templates/actors.php`/`studios.php`); a redesigned search page; loading/empty/error states throughout (a shared `.empty-state` component, an infinite-scroll loading/error status region with `aria-live="polite"`); a multi-column footer.
+- **`tube-core`** — `ActorRepository::find_many()`/`StudioRepository::find_many()` (batched-query + request-lifetime-cache, same pattern as `VideoMetadataRepository::find_many()`) and 6 new template tags: `tube_core_list_actors()`/`_count_actors()`/`_list_studios()`/`_count_studios()`/`_get_actors()`/`_get_studios()`.
+- **`tube-player`** — `ImageSize::Avatar` (a new square size preset — requires configuring a matching `avatar` variant in the Cloudflare Images dashboard before this ships in production), a new `ProfileImageHtmlRenderer` class, and `tube_player_get_profile_image_html()`.
+
+### Verified
+
+- `phpcs` exit `0` and `phpstan analyse` (level `max`) `[OK] No errors`, whole repository.
+- 166 unit tests / 92 integration tests passing (up from 1.0.1's 165/84) across every plugin that has a suite.
+- Live SQL-query-count investigation found and fixed two real inefficiencies in the new header/footer/mega-menu code (a duplicate `get_terms()` call; 5 separate page-template-URL lookups collapsed into 1 bulk query) before they shipped — full accounting in `BENCHMARKS.md`'s Phase 13 section. No regression in any benchmarked metric.
+- Full benchmark suite re-run and compared against 1.0.1's baseline — no regression.
+
+### Known limitations
+
+- No real-browser interaction/visual QA was performed this release (no browser-automation tool available in the implementing session) — everything verifiable without one was verified (JS syntax, CSS validity, every page's live HTML/markup/SQL cost via `curl`). A manual pass in a real browser (mega menu, mobile nav, infinite scroll, responsive breakpoints) is recommended before this reaches production traffic. Full detail in `PHASE-13.md` §10.
+- The Cloudflare Images `avatar` variant (and, pre-existing, `grid_card`/`hero`/`og_image`) are not yet configured in any environment available this release — the code degrades gracefully (no photo renders) until they are.
+
 ## [1.0.1] — 2026-08-07
 
 Deployment-procedure hotfix. No application code changed — every plugin's runtime behavior is identical to 1.0.0.

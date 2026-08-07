@@ -145,6 +145,96 @@ final class ActorStudioIntegrationTest extends TestCase
     }
 
     /**
+     * Phase 13: ActorRepository::find_many() resolves multiple real rows
+     * in one batched query, silently omits unknown IDs (not null entries),
+     * and a subsequent find() for an ID it already resolved issues no
+     * additional query — the exact N+1-prevention contract
+     * `VideoMetadataRepository::find_many()` already established.
+     */
+    public function test_actor_find_many_batches_and_primes_find(): void
+    {
+        $actor_id_a = $this->create_actor('Actor Many A', null);
+        $actor_id_b = $this->create_actor('Actor Many B', null);
+        $unknown_id = 999999999;
+
+        $repository = Tube_Core_Plugin::instance()->actor_repository();
+
+        $result = $repository->find_many([$actor_id_a, $actor_id_b, $unknown_id]);
+
+        self::assertCount(2, $result);
+        self::assertSame('Actor Many A', $result[ $actor_id_a ]->name);
+        self::assertSame('Actor Many B', $result[ $actor_id_b ]->name);
+        self::assertArrayNotHasKey($unknown_id, $result);
+
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API.
+
+        $queries_before = $wpdb->num_queries;
+        $found          = $repository->find($actor_id_a);
+        $queries_after  = $wpdb->num_queries;
+
+        self::assertNotNull($found);
+        self::assertSame($queries_before, $queries_after, 'find() after find_many() should not issue a new query.');
+    }
+
+    /**
+     * Phase 13: StudioRepository::find_many() — same contract as
+     * ActorRepository::find_many(), see its test's docblock.
+     */
+    public function test_studio_find_many_batches_and_primes_find(): void
+    {
+        $studio_id_a = $this->create_studio('Studio Many A', null);
+        $studio_id_b = $this->create_studio('Studio Many B', null);
+        $unknown_id  = 999999999;
+
+        $repository = Tube_Core_Plugin::instance()->studio_repository();
+
+        $result = $repository->find_many([$studio_id_a, $studio_id_b, $unknown_id]);
+
+        self::assertCount(2, $result);
+        self::assertSame('Studio Many A', $result[ $studio_id_a ]->name);
+        self::assertSame('Studio Many B', $result[ $studio_id_b ]->name);
+        self::assertArrayNotHasKey($unknown_id, $result);
+
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API.
+
+        $queries_before = $wpdb->num_queries;
+        $found          = $repository->find($studio_id_a);
+        $queries_after  = $wpdb->num_queries;
+
+        self::assertNotNull($found);
+        self::assertSame($queries_before, $queries_after, 'find() after find_many() should not issue a new query.');
+    }
+
+    /**
+     * Phase 13: tube_core_list_actors()/count_actors()/list_studios()/
+     * count_studios()/get_actors()/get_studios() template tags are thin
+     * wrappers — verify they actually reach the real repositories against
+     * real seeded rows, not just that the repositories themselves work.
+     */
+    public function test_template_tags_reach_real_repositories(): void
+    {
+        $actor_id  = $this->create_actor('Template Tag Actor', null);
+        $studio_id = $this->create_studio('Template Tag Studio', null);
+
+        self::assertGreaterThanOrEqual(1, tube_core_count_actors());
+        self::assertGreaterThanOrEqual(1, tube_core_count_studios());
+
+        $actors  = tube_core_list_actors(1000);
+        $studios = tube_core_list_studios(1000);
+
+        self::assertNotEmpty(array_filter($actors, static fn ($actor): bool => $actor->id === $actor_id));
+        self::assertNotEmpty(array_filter($studios, static fn ($studio): bool => $studio->id === $studio_id));
+
+        $resolved_actors  = tube_core_get_actors([$actor_id]);
+        $resolved_studios = tube_core_get_studios([$studio_id]);
+
+        self::assertSame('Template Tag Actor', $resolved_actors[ $actor_id ]->name);
+        self::assertSame('Template Tag Studio', $resolved_studios[ $studio_id ]->name);
+    }
+
+    /**
      * A real request to /actor/{slug}/ resolves the correct actor via
      * TermArchiveRouting's real `add_rewrite_rule()`/`template_include`
      * wiring — not just the repository lookup in isolation.

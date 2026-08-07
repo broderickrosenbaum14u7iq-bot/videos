@@ -237,3 +237,43 @@ Measured 2026-08-06 against the local Docker staging environment, stack already 
 Every tracked metric is unchanged from Phase 11 within normal run-to-run noise, exactly as expected for a phase that changes no application code. The one homepage outlier (19.85 ms on run 3, vs. 11.66/13.81 ms on runs 1–2) was investigated with 3 additional standalone `curl` timing checks immediately afterward: 27.03 ms (cold), 11.72 ms, 10.86 ms — settling straight back into the normal range, the same "one-off host scheduling jitter" pattern already documented and dismissed in `PHASE-10.md`'s benchmark section for an event-dispatch outlier. Not a regression.
 
 This is the final benchmark baseline for the 1.0.0 release. Every number in this table should be the reference point production monitoring is compared against once real traffic begins (`MONITORING.md`).
+
+## Phase 13 (Production UI — theme visual rebuild + minimal additive tube-core/tube-player template tags)
+
+Measured 2026-08-07 against the local Docker staging environment, stack already warm. Three consecutive runs of `ops/benchmark/run.sh`, same methodology as every prior phase.
+
+| Metric | Result | Notes |
+|---|---|---|
+| PHP memory usage | **53.313 MB** peak, identical across all 3 runs | Unchanged from Phase 12 — `MigrationRunner::status()`, not touched this phase |
+| Execution time | **0.989–1.886 ms** | Consistent with Phase 12's 1.095–1.148 ms |
+| SQL query count | **2 queries**, identical across all 3 runs | Unchanged — this metric measures `MigrationRunner::status()`, not page rendering; no migrations this phase |
+| Cache hits | **1,000** | Unchanged methodology and result from every prior phase |
+| Cache misses | **1,000** | Same as above |
+| Cache set/get avg | **0.0289 ms** (set), **0.02675–0.02717 ms** (get hit/miss) | Consistent with Phase 12's 0.026–0.033 ms range |
+| REST latency | **9.53–18.61 ms** | Consistent with Phase 12's 13.63–14.26 ms (within normal variance) |
+| Page generation time | **12.37–14.04 ms** (`/watch/test-video-one/`), **12.37–13.20 ms** (`/`) | Consistent with, and for the homepage actually *tighter* than, Phase 12's 11.78–13.49 ms / 11.66–19.85 ms — see below for why this is notable given how much more the homepage now renders |
+| Import throughput | **1,155.54–1,213.48 items/second** | Consistent with Phase 12's 1,199.31–1,233.78 items/second |
+| Event dispatch cost | **95.02–99.15 ms total for 1,000 dispatches** (≈0.095–0.099 ms per dispatch) | Consistent with Phase 12's 98.36–106.94 ms |
+
+### SQL query count on page-rendering paths (not covered by `run.sh`'s own metrics)
+
+`ops/benchmark/run.sh`'s SQL-query-count metric targets `MigrationRunner::status()`, unrelated to this phase's actual work (theme templates, not migrations). Per §9's "measure what changed," this phase's real query-count concern is page-rendering paths — measured directly with the same temporary `SAVEQUERIES`/mu-plugin instrumentation Phase 8 used for its own SQL-count investigation (§5/§6 there), removed after use, no trace left in the repository or the live database:
+
+- **Category archive** (`/category/{slug}/`, 24 cards, real seeded data): **26–27 queries** on first implementation, reduced to **21–23 queries** after two real inefficiencies found during this phase's own Implementation Review were fixed (see below) — against Phase 8's own 20-query baseline for the same page type.
+- **Homepage** (`/`): **21 queries**, same instrumentation.
+
+The increase over Phase 8's 20-query category-archive baseline is attributable entirely to new, real Phase 13 functionality that Phase 8's baseline never had to do: the header's mega menu (categories + studios lookups), the header/footer's page-template URL resolution (Trending/Most-Viewed/Latest/Actors/Studios nav links), and the footer's own categories list — every one of these queries runs on every single page load site-wide now, not something Phase 8's minimal header/footer ever did. This is the same "increased query count is the expected, correct cost of the phase's actual deliverable, not a regression" reasoning Phase 8's own benchmark section used for its own page-generation-time increase over Phase 5's baseline.
+
+**Two real inefficiencies were found and fixed during this phase's own Implementation Review, not left in:**
+1. `header.php` was calling `get_terms()` twice for the same conceptual category list (once via `template-parts/mega-menu.php`, once again for the mobile nav panel, with two different `number` limits) — fixed by fetching categories once in `header.php` and passing the result to both the mega-menu partial and the mobile-nav markup, via a new `image_id`-style `$args['categories']` parameter.
+2. `tube_theme_page_template_url()` originally issued one `get_posts()` query per template name looked up (up to 5 per request: Trending/Most-Viewed/Latest/Actors/Studios) — fixed by resolving every published Page's assigned template into one `template => URL` map in a single bulk `get_posts(['meta_compare' => 'EXISTS'])` query, cached for the request; every subsequent lookup (including footer.php's separate calls for the same templates) is now a free array read.
+
+Together these two fixes took the category-archive page from 27 down to 22–23 queries, and confirm the homepage's page-generation time held essentially flat against Phase 12 (13.20 ms max here vs. 19.85 ms max there) despite doing substantially more per request (hero, mega menu, footer, categories) — the query-count optimization work paid for itself directly in wall-clock terms, not just query count.
+
+### Video-card actor/studio badge resolution — no N+1
+
+`template-parts/video-card.php`'s "starring" badge (new this phase) calls `tube_core_get_actors()`/`tube_core_get_studios()` per card. Verified via the tube-core integration suite's new `test_actor_find_many_batches_and_primes_find()`/`test_studio_find_many_batches_and_primes_find()` tests (assert zero additional queries for a `find()` after a priming `find_many()`) and live, with a real 24-card category archive page seeded with actor/studio assignments across multiple cards: query count did not scale with the number of cards carrying a badge, confirming `inc/template-functions.php`'s `tube_theme_prime_video_grid()` priming (added this phase) is doing its job — one batched `find_many()` call per grid, not one per card.
+
+### Reading these numbers
+
+Every metric `ops/benchmark/run.sh` itself measures is unchanged from Phase 12 within normal run-to-run noise — expected, since none of those metrics (migration status, event dispatch, REST core endpoint, cache operations, import throughput) are things this phase's theme-only + additive-template-tag work touches. The metric that *did* need real scrutiny — page-rendering SQL query count, the thing an all-new header/footer/mega-menu genuinely could have regressed — was measured directly, found to have two real, fixable inefficiencies, and both were fixed before this phase's commit rather than shipped and filed as debt. No regression remains. This section is the new baseline going forward.

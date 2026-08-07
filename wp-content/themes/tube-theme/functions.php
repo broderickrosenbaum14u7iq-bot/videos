@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-const TUBE_THEME_VERSION = '1.0.1';
+const TUBE_THEME_VERSION = '1.1.0';
 
 require_once __DIR__ . '/inc/template-functions.php';
 
@@ -46,6 +46,15 @@ add_action(
             [],
             TUBE_THEME_VERSION,
             true
+        );
+
+        wp_localize_script(
+            'tube-theme',
+            'tubeThemeI18n',
+            [
+                'loadingMore'   => __('Loading more videos…', 'tube-theme'),
+                'loadMoreError' => __('Couldn\'t load more videos. Use the pagination below instead.', 'tube-theme'),
+            ]
         );
     }
 );

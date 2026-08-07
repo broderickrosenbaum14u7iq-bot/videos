@@ -15,6 +15,9 @@ use RuntimeException;
 use Tube_Core\Plugin as Tube_Core_Plugin;
 use Tube_Core\Video\CfStreamStatus;
 use Tube_Player\Plugin as Tube_Player_Plugin;
+use Tube_Player\Render\ProfileImageHtmlRenderer;
+use Tube_Player\Video\Cloudflare\CloudflareImagesUrlBuilder;
+use Tube_Player\Video\ImageSize;
 
 /**
  * Exercises `tube_player_get_image_html()`/`tube_player_get_embed_html()`
@@ -170,5 +173,67 @@ final class TemplateTagsIntegrationTest extends TestCase
     public function test_embed_html_returns_empty_string_for_unknown_video(): void
     {
         self::assertSame('', tube_player_get_embed_html(999999999));
+    }
+
+    /**
+     * Phase 13: a null image ID (no photo) renders nothing, not a broken
+     * tag — the common case, since `Actor::$photo_image_id`/
+     * `Studio::$logo_image_id` are usually null until an editor uploads one.
+     */
+    public function test_profile_image_html_returns_empty_string_for_null_image_id(): void
+    {
+        self::assertSame('', tube_player_get_profile_image_html(null));
+    }
+
+    /**
+     * Phase 13: an unrecognized $size renders nothing.
+     */
+    public function test_profile_image_html_returns_empty_string_for_unrecognized_size(): void
+    {
+        self::assertSame('', tube_player_get_profile_image_html(123, 'not-a-real-size'));
+    }
+
+    /**
+     * Phase 13: this staging environment has no
+     * TUBE_PLAYER_CLOUDFLARE_IMAGES_ACCOUNT_HASH configured, so
+     * Tube_Player\Plugin::instance()->images_url_builder() is null and
+     * the template tag correctly degrades to '' even for a real image
+     * ID — the same graceful-degradation `ImageHtmlRenderer`'s own
+     * override path already relies on when Cloudflare Images isn't set up.
+     */
+    public function test_profile_image_html_returns_empty_string_when_images_url_builder_unconfigured(): void
+    {
+        self::assertSame('', tube_player_get_profile_image_html(123));
+    }
+
+    /**
+     * Phase 13: with a Cloudflare Images URL builder actually configured
+     * (constructed directly here, independent of this environment's own
+     * `TUBE_PLAYER_CLOUDFLARE_IMAGES_ACCOUNT_HASH` config, so this test
+     * is deterministic regardless of environment), a real image ID
+     * renders the expected `<img>` markup: correct src, square
+     * dimensions, no srcset.
+     */
+    public function test_profile_image_renderer_renders_expected_markup_when_configured(): void
+    {
+        $renderer = new ProfileImageHtmlRenderer(new CloudflareImagesUrlBuilder('test-account-hash'));
+
+        $html = $renderer->render(456, ImageSize::Avatar, ['alt' => 'Jane Doe']);
+
+        self::assertSame(
+            '<img src="https://imagedelivery.net/test-account-hash/456/avatar" width="400" height="400"'
+                . ' alt="Jane Doe" loading="lazy" decoding="async" class="tube-player__profile-photo" />',
+            $html
+        );
+    }
+
+    /**
+     * Phase 13: a configured renderer still returns '' for a null image ID.
+     */
+    public function test_profile_image_renderer_returns_empty_string_for_null_image_id_even_when_configured(): void
+    {
+        $renderer = new ProfileImageHtmlRenderer(new CloudflareImagesUrlBuilder('test-account-hash'));
+
+        self::assertSame('', $renderer->render(null, ImageSize::Avatar));
     }
 }
