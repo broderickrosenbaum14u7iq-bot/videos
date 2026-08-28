@@ -97,3 +97,76 @@ if (! function_exists('wp_rand')) {
         return random_int($min, $max);
     }
 }
+
+if (! function_exists('get_transient')) {
+    /**
+     * A minimal in-memory stand-in for WordPress core's real
+     * `get_transient()`/`set_transient()`/`delete_transient()` trio
+     * (`wp-includes/option.php`), backed by
+     * `Tube_Members\Tests\Unit\Support\FakeTransientStore` (a typed
+     * static property, not a raw `$GLOBALS[]` array — the same
+     * PHPStan-checkable "fake's control surface" convention
+     * `FakeUsernameRegistry` already establishes for `username_exists()`
+     * in this same test suite) rather than `wp_options` — mirrors the
+     * real contract these three functions share (a value expires and
+     * reads back as `false` once its TTL elapses) closely enough to
+     * exercise `RedisRateLimiter::attempt_via_transient_fallback()`
+     * without a real WordPress/database bootstrap.
+     *
+     * Deliberately round-trips every stored value through `(string)`
+     * before handing it back, the same way a real `wp_options` row
+     * does (its `option_value` column is TEXT — a plain scalar written
+     * through `update_option()` does not come back as the same PHP
+     * type it went in as). An earlier version of this stub preserved
+     * the exact PHP type instead, which is why the first version of
+     * `attempt_via_transient_fallback()`'s `is_int($stored)` check
+     * passed every Unit test here while being silently broken against
+     * a real WordPress install (confirmed live during the 2026-08-28
+     * CRIT-2 fix: every attempt read back "not an int" and reset to 1,
+     * so the fallback rate limit never actually engaged) — this stub
+     * now catches that exact class of bug instead of hiding it.
+     *
+     * @param string $transient The transient's name.
+     *
+     * @return string|false The stored value as a string, or `false` if absent/expired.
+     */
+    function get_transient(string $transient) // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound -- this IS WordPress core's own get_transient(), stubbed for the Unit suite (see this file's own docblock).
+    {
+        $entry = \Tube_Members\Tests\Unit\Support\FakeTransientStore::$entries[ $transient ] ?? null;
+
+        if (null === $entry || $entry['expires_at'] < time()) {
+            return false;
+        }
+
+        return $entry['value'];
+    }
+
+    /**
+     * Stores a transient value.
+     *
+     * @param string $transient  The transient's name.
+     * @param mixed  $value      The value to store.
+     * @param int    $expiration Seconds until expiry.
+     */
+    function set_transient(string $transient, $value, int $expiration): bool // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound -- this IS WordPress core's own set_transient(), stubbed for the Unit suite (see this file's own docblock).
+    {
+        \Tube_Members\Tests\Unit\Support\FakeTransientStore::$entries[ $transient ] = [
+            'value'      => is_scalar($value) ? (string) $value : '',
+            'expires_at' => time() + $expiration,
+        ];
+
+        return true;
+    }
+
+    /**
+     * Deletes a stored transient value.
+     *
+     * @param string $transient The transient's name.
+     */
+    function delete_transient(string $transient): bool // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound -- this IS WordPress core's own delete_transient(), stubbed for the Unit suite (see this file's own docblock).
+    {
+        unset(\Tube_Members\Tests\Unit\Support\FakeTransientStore::$entries[ $transient ]);
+
+        return true;
+    }
+}

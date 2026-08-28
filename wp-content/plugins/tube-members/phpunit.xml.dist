@@ -9,10 +9,16 @@
         pure-logic tests (or tests against a handful of stubbed WordPress
         functions — see tests/bootstrap.php) with no live database and no
         full WordPress bootstrap. Classes that call wp_insert_user(),
-        wp_authenticate(), wp_set_auth_cookie(), or Redis are exercised
-        instead via this session's own live, real-browser + real-database
-        end-to-end verification (registration, login, wp-admin blocking,
-        Google OAuth scaffolding, avatar upload) — see the final report.
+        wp_authenticate(), or wp_set_auth_cookie() are exercised instead
+        via live, real-browser + real-database end-to-end verification
+        (registration, login, wp-admin blocking, Google OAuth scaffolding,
+        avatar upload). RedisRateLimiter (2026-08-28, P0 CRIT-2 fix) is
+        the one Redis-touching class that DOES have Unit coverage —
+        against a fake Predis\ClientInterface (tests/Unit/Support/
+        Fixtures/) and the stubbed get_transient()/set_transient()/
+        delete_transient() trio in tests/bootstrap.php, exercising both
+        the healthy-Redis path and the fail-closed transient fallback
+        deterministically, with no real Redis connection needed.
     -->
     <testsuites>
         <testsuite name="unit">
