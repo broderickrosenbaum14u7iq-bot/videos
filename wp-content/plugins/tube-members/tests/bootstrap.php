@@ -126,9 +126,22 @@ if (! function_exists('get_transient')) {
      * so the fallback rate limit never actually engaged) — this stub
      * now catches that exact class of bug instead of hiding it.
      *
+     * Declared `@return mixed` (not the narrower `string|false` this
+     * stub's own implementation always actually returns) deliberately
+     * matching wordpress-stubs' own `get_transient()` signature exactly
+     * -- PHPStan indexes a global function's declared signature project
+     * -wide, not scoped to "only applies inside the Unit suite this
+     * file bootstraps," so a narrower type here previously leaked into
+     * unrelated production code elsewhere in this plugin (GoogleOAuthController's
+     * own real, unrelated `get_transient()` call for OAuth state got
+     * incorrectly narrowed by it, producing a false
+     * "is_string() always true" PHPStan error there). This file's
+     * *implementation* is unaffected by the annotation -- only the
+     * declared contract other files' static analysis sees.
+     *
      * @param string $transient The transient's name.
      *
-     * @return string|false The stored value as a string, or `false` if absent/expired.
+     * @return mixed The stored value, or `false` if absent/expired.
      */
     function get_transient(string $transient) // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound -- this IS WordPress core's own get_transient(), stubbed for the Unit suite (see this file's own docblock).
     {

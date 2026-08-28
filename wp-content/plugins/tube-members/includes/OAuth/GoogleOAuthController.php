@@ -176,16 +176,53 @@ final class GoogleOAuthController
         $by_email = get_user_by('email', $profile['email']);
 
         if ($by_email instanceof WP_User) {
+            // Security-critical (2026-08-28, P0 CRIT-1 fix): checked
+            // BEFORE linking/marking-verified below, against the
+            // account's state as it was walking in the door. Matching
+            // on email alone is not proof of ownership by itself -- an
+            // attacker can pre-register any email address with a
+            // password of their choosing and never verify it. Linking
+            // Google here (an exact, `email_verified` email match) IS
+            // sufficient proof that the person completing this OAuth
+            // flow owns the mailbox right now, but it is NOT proof that
+            // they, rather than an earlier pre-registerer, are the one
+            // who should still control that account's original
+            // password. The old code linked and marked-verified
+            // unconditionally, leaving that original password valid
+            // forever -- a standing backdoor for whoever registered
+            // first. An already-*verified* account, by contrast, already
+            // proved ownership through a real prior step (an email
+            // link click or an earlier Google link), so its password is
+            // left untouched here -- this only closes the specific
+            // pre-registration window, it does not add friction to
+            // every Google sign-in.
+            $was_already_verified = $this->email_verification->is_verified($by_email);
+
             update_user_meta($by_email->ID, self::GOOGLE_SUB_META, $profile['sub']);
             $this->store_google_avatar($by_email->ID, $profile['picture']);
-            // This existing account (possibly a manual email/password
-            // signup that never verified) now has a Google-vouched-for
-            // match on this exact email address -- Phase 21/27: safe
-            // against account takeover because linking only ever
-            // happens on an EXACT email match, and only after Google's
-            // own email_verified claim was already checked true by
-            // the caller.
             $this->email_verification->mark_verified_from_trusted_provider($by_email->ID);
+
+            if (! $was_already_verified) {
+                // Rotates to a random, nobody-knows-it password -- the
+                // exact same value shape a brand-new OAuth-created
+                // account already gets a few lines below. This also
+                // destroys every existing session for the account (a
+                // documented side effect of wp_set_password() itself),
+                // so a pre-registerer's live session is force-logged-out
+                // too, not just their password invalidated. The real
+                // owner is unaffected: they're about to be logged in
+                // fresh via Google regardless, and can set a real
+                // password anytime afterward through the account page's
+                // existing password-change flow.
+                wp_set_password(wp_generate_password(32, true, true), $by_email->ID);
+                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- deliberate security-audit logging for a real account-takeover-prevention event, not debug output.
+                error_log(
+                    sprintf(
+                        '[tube-members] OAuth-linked previously-unverified account #%d and invalidated its prior password (closing a pre-registration account-takeover window).',
+                        $by_email->ID
+                    )
+                );
+            }
 
             return $by_email;
         }
