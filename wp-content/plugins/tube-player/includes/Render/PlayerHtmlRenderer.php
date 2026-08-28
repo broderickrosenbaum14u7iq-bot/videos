@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace Tube_Player\Render;
 
+use Tube_Core\Video\CfStreamStatus;
 use Tube_Player\Video\ImageSize;
 use Tube_Player\Video\VideoProviderInterface;
 
@@ -60,19 +61,42 @@ final class PlayerHtmlRenderer
     /**
      * Render one click-to-load player block.
      *
+     * 2026-08-28 (P0 HIGH-3 fix): the interactive click-to-load markup
+     * below (`data-tube-player`/`data-embed-url`/the `.tube-player__play`
+     * button) is now only ever rendered when `$status` is
+     * `CfStreamStatus::Ready`. Every other status renders through
+     * {@see self::render_status_overlay()} instead -- no `data-tube-player`
+     * attribute, no `.tube-player__play` button, no `data-embed-url`/
+     * `data-view-url` -- which is deliberately what makes this safe with
+     * zero changes needed to `assets/js/tube-player.js` or
+     * `tube-ads`' own preroll script: both are wired entirely off a real
+     * click on `.tube-player__play` (`event.target.closest('.tube-player__play')`,
+     * then `.closest('[data-tube-player]')`) -- remove that one element
+     * and player activation, VAST/preroll, and the view-increment POST
+     * (whose URL only ever exists as that same button's sibling
+     * attribute) all become unreachable at once, not three separate
+     * fixes to keep in sync.
+     *
      * @param int                        $video_id The video post ID — embedded only as `data-view-url`
      *     (a pre-built, server-rendered REST URL), the same "no URL-construction logic in client-side JS"
      *     posture `data-embed-url` already established; never sent anywhere else by this class.
      * @param string                     $cf_stream_uid Cloudflare Stream UID.
+     * @param CfStreamStatus             $status   The video's current Cloudflare Stream processing status —
+     *     stored/synchronized metadata (`StreamStatusUpdater`), never a live per-render Cloudflare API call.
      * @param int|null                   $override_poster_image_id WP attachment ID to use as the poster (ADR-0001).
      * @param array<string, bool|string> $args `title`/`aspect_ratio`/`class` (string), `eager` (bool). All optional.
      */
     public function render(
         int $video_id,
         string $cf_stream_uid,
+        CfStreamStatus $status,
         ?int $override_poster_image_id,
         array $args = []
     ): string {
+        if (CfStreamStatus::Ready !== $status) {
+            return $this->render_status_overlay($this->status_message($status), $override_poster_image_id, $args);
+        }
+
         $embed_url    = $this->stream_provider->embed_url($cf_stream_uid);
         $view_url     = rest_url('tube/v1/videos/' . $video_id . '/view');
         $title        = self::string_arg($args, 'title', '');
@@ -108,6 +132,93 @@ final class PlayerHtmlRenderer
             esc_html($this->watch_label($title)),
             esc_attr('' === $title ? __('Video player', 'tube-player') : $title),
             esc_url($view_url)
+        );
+    }
+
+    /**
+     * Render the non-interactive block for a video with no stored
+     * metadata row at all (2026-08-28, P0 HIGH-2 fix) --
+     * `tube_player_get_embed_html()` used to return `''` here, which
+     * `single-video.php` had no fallback for, producing a silent,
+     * unexplained gap where the player should be (no message, no
+     * reserved height, `.video-player-wrap` collapsed to zero). Same
+     * non-interactive wrapper `self::render()` itself now uses for a
+     * non-Ready status, since "no metadata" and "not ready yet" are the
+     * same user-facing situation: nothing playable exists right now.
+     *
+     * @param array<string, bool|string> $args `title`/`aspect_ratio`/`class` (string). All optional.
+     */
+    public function render_missing(array $args = []): string
+    {
+        return $this->render_status_overlay(
+            __('Video hiện chưa sẵn sàng.', 'tube-player'),
+            null,
+            $args
+        );
+    }
+
+    /**
+     * The Vietnamese message shown for each non-Ready status — see
+     * `self::render()`'s own docblock for why this branch exists at all.
+     *
+     * @param CfStreamStatus $status Never `Ready` — that case never reaches this method.
+     */
+    private function status_message(CfStreamStatus $status): string
+    {
+        return match ($status) {
+            CfStreamStatus::Pending, CfStreamStatus::Processing => __('Video đang được xử lý.', 'tube-player'),
+            CfStreamStatus::Error => __('Video hiện không khả dụng.', 'tube-player'),
+            CfStreamStatus::Ready => '', // Unreachable -- self::render() branches before calling this method for Ready.
+        };
+    }
+
+    /**
+     * The shared non-interactive block both `self::render()` (a non-Ready
+     * status) and `self::render_missing()` (no metadata row at all)
+     * render through — same outer wrapper class/`aspect-ratio` as the
+     * real interactive player (stable layout, zero CLS either way,
+     * `.video-player-wrap`/`.tube-player` never collapses), the poster
+     * behind a dimmed overlay if one resolves (graceful degrade to no
+     * image otherwise, the same as `ImageHtmlRenderer`'s own established
+     * behavior), but deliberately no `data-tube-player`/`data-embed-url`/
+     * `data-view-url`/`.tube-player__play` button -- see `self::render()`'s
+     * own docblock for why omitting exactly that is what prevents
+     * activation, VAST/preroll, and the view-increment call all at once.
+     *
+     * @param string                     $message                  Already-translated Vietnamese status text.
+     * @param int|null                   $override_poster_image_id WP attachment ID to use as the poster, if any.
+     * @param array<string, bool|string> $args                     `title`/`aspect_ratio`/`class` (string). All optional.
+     */
+    private function render_status_overlay(string $message, ?int $override_poster_image_id, array $args): string
+    {
+        $title        = self::string_arg($args, 'title', '');
+        $aspect_ratio = self::string_arg($args, 'aspect_ratio', self::DEFAULT_ASPECT_RATIO);
+        $class        = trim('tube-player tube-player--unavailable ' . self::string_arg($args, 'class', ''));
+
+        $poster_html = $this->image_renderer->render(
+            $override_poster_image_id,
+            ImageSize::Hero,
+            [
+                'eager' => false,
+                'alt'   => $title,
+            ]
+        );
+
+        return sprintf(
+            '<div class="%1$s" style="aspect-ratio:%2$s">'
+                . '%3$s'
+                . '<div class="tube-player__status">'
+                . '<svg class="tube-player__status-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
+                . '<path d="M12 6v6l4 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>'
+                . '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"></circle>'
+                . '</svg>'
+                . '<p class="tube-player__status-message">%4$s</p>'
+                . '</div>'
+                . '</div>',
+            esc_attr($class),
+            esc_attr($aspect_ratio),
+            $poster_html,
+            esc_html($message)
         );
     }
 

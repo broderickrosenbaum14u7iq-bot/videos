@@ -322,11 +322,77 @@ final class TemplateTagsIntegrationTest extends TestCase
     }
 
     /**
-     * An unknown video ID renders nothing.
+     * 2026-08-28 (P0 HIGH-2 fix): an unknown video ID (no
+     * `wp_tube_video_metadata` row at all) used to render `''`, which
+     * `single-video.php` had no fallback for -- a silent, unexplained
+     * gap where the player should be. Now renders a real, non-empty,
+     * non-interactive status block instead: no `data-tube-player`
+     * attribute (so `assets/js/tube-player.js`'s click handler and
+     * tube-ads' own preroll script, both wired off a real click on
+     * `.tube-player__play`, can never find anything to activate), no
+     * play button, and the "not ready" message.
      */
-    public function test_embed_html_returns_empty_string_for_unknown_video(): void
+    public function test_embed_html_renders_a_status_block_for_unknown_video(): void
     {
-        self::assertSame('', tube_player_get_embed_html(999999999));
+        $html = tube_player_get_embed_html(999999999);
+
+        self::assertNotSame('', $html);
+        self::assertStringContainsString('Video hiện chưa sẵn sàng.', $html);
+        self::assertStringNotContainsString('data-tube-player', $html);
+        self::assertStringNotContainsString('<button', $html);
+        self::assertStringNotContainsString('data-embed-url', $html);
+        self::assertStringNotContainsString('data-view-url', $html);
+    }
+
+    /**
+     * 2026-08-28 (P0 HIGH-3 fix): a video whose Cloudflare Stream is
+     * still Pending/Processing renders the same kind of non-interactive
+     * status block as the "unknown video" case above -- real metadata
+     * exists, but nothing is playable yet. No player activation, no
+     * VAST/preroll (both gated off the same missing `.tube-player__play`
+     * button), no view-increment URL.
+     *
+     * @dataProvider provide_non_ready_statuses
+     *
+     * @param CfStreamStatus $status            The non-Ready status to seed the test video's metadata with.
+     * @param string         $expected_message  The Vietnamese status text expected in the rendered output.
+     */
+    public function test_embed_html_renders_a_status_block_for_non_ready_status(
+        CfStreamStatus $status,
+        string $expected_message
+    ): void {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API.
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- test-only status mutation against a dedicated custom table owned by tube-core; no repository method exists to change status alone post-creation.
+        $wpdb->update(
+            $wpdb->prefix . 'tube_video_metadata',
+            ['cf_status' => $status->value],
+            ['video_id' => $this->video_id]
+        );
+
+        $html = tube_player_get_embed_html($this->video_id, ['title' => 'My Test Video']);
+
+        self::assertNotSame('', $html);
+        self::assertStringContainsString($expected_message, $html);
+        self::assertStringNotContainsString('data-tube-player', $html);
+        self::assertStringNotContainsString('<button', $html);
+        self::assertStringNotContainsString('data-embed-url', $html);
+        self::assertStringNotContainsString('data-view-url', $html);
+    }
+
+    /**
+     * Non-Ready statuses and each one's expected Vietnamese status message.
+     *
+     * @return array<string, array{0: CfStreamStatus, 1: string}>
+     */
+    public static function provide_non_ready_statuses(): array
+    {
+        return [
+            'pending'    => [CfStreamStatus::Pending, 'Video đang được xử lý.'],
+            'processing' => [CfStreamStatus::Processing, 'Video đang được xử lý.'],
+            'error'      => [CfStreamStatus::Error, 'Video hiện không khả dụng.'],
+        ];
     }
 
     /**

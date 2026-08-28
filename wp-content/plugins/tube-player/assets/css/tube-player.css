@@ -70,3 +70,39 @@
     color: #fff;
     text-decoration: underline;
 }
+
+/* Non-interactive status overlay (2026-08-28, P0 HIGH-2/HIGH-3 fix) --
+   missing metadata or a not-yet-Ready Cloudflare Stream status. Same
+   reserved aspect-ratio box as the real player (.tube-player itself,
+   unchanged) so layout never shifts between states; this block adds
+   only the dimming/message layer on top. */
+.tube-player--unavailable .tube-player__poster {
+    filter: brightness(0.5);
+}
+
+.tube-player__status {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 16px;
+    text-align: center;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.35);
+}
+
+.tube-player__status-icon {
+    width: clamp(28px, 10%, 48px);
+    height: clamp(28px, 10%, 48px);
+    flex-shrink: 0;
+}
+
+.tube-player__status-message {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    max-width: 32ch;
+}

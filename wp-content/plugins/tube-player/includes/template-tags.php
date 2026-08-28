@@ -100,25 +100,36 @@ function tube_player_get_image_html(int $video_id, string $size, array $args = [
 /**
  * Render a video's click-to-load player block.
  *
+ * 2026-08-28 (P0 HIGH-2 fix): this used to return `''` when the video
+ * had no stored metadata row at all, which `single-video.php` had no
+ * fallback for — a silent, unexplained gap where the player should be
+ * (no message, `.video-player-wrap` collapsed to zero height, no
+ * console error to even hint something was wrong). Now always returns
+ * real markup: the interactive click-to-load block only when metadata
+ * exists AND its Cloudflare Stream status is `Ready`
+ * ({@see \Tube_Player\Render\PlayerHtmlRenderer::render()}), a
+ * non-interactive status overlay otherwise (missing metadata, or a
+ * real but not-yet-Ready status — pending/processing/error).
+ *
  * @param int                        $video_id The video post ID.
  * @param array<string, bool|string> $args     See `PlayerHtmlRenderer::render()`. All optional.
  *
- * @return string The player block's HTML, or '' if the video has no stored metadata.
+ * @return string The player block's HTML — never ''.
  */
 function tube_player_get_embed_html(int $video_id, array $args = []): string
 {
-    $metadata = Tube_Core_Plugin::instance()->video_metadata_repository()->find($video_id);
-
-    if (null === $metadata) {
-        return '';
-    }
-
     wp_enqueue_style(
         'tube-player',
         plugins_url('assets/css/tube-player.css', TUBE_PLAYER_FILE),
         [],
         TUBE_PLAYER_VERSION
     );
+
+    $metadata = Tube_Core_Plugin::instance()->video_metadata_repository()->find($video_id);
+
+    if (null === $metadata) {
+        return \Tube_Player\Plugin::instance()->player_renderer()->render_missing($args);
+    }
 
     wp_enqueue_script(
         'tube-player',
@@ -131,6 +142,7 @@ function tube_player_get_embed_html(int $video_id, array $args = []): string
     return \Tube_Player\Plugin::instance()->player_renderer()->render(
         $video_id,
         $metadata->cf_stream_uid,
+        $metadata->cf_status,
         $metadata->poster_image_id,
         $args
     );
