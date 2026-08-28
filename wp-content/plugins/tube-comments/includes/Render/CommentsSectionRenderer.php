@@ -72,11 +72,29 @@ final class CommentsSectionRenderer
                 </div>
             </div>
 
-            <?php $composer_avatar_url = '' !== $avatar_url ? $avatar_url : tube_members_get_avatar_url(0); ?>
+            <?php
+            $composer_avatar_url = '' !== $avatar_url ? $avatar_url : tube_members_get_avatar_url(0);
+
+            // 2026-08-28 (P1 HIGH-10 fix): the guest fallback avatar is a
+            // generated `data:image/svg+xml;base64,...` URI -- plain
+            // `esc_url()` strips `data:` entirely (not in its default
+            // allowed-protocol list), producing `src=""` and a broken-image
+            // icon for every anonymous visitor. `data:` is safe here
+            // (server-generated from a fixed SVG template in
+            // `AvatarService::default_avatar_url()`, never user input), so
+            // explicitly allow-listing it via `esc_url()`'s own `$protocols`
+            // parameter is the correct fix -- narrower and more direct than
+            // the `data-*` + JS `onerror` swap `HeaderAccountRenderer` uses
+            // elsewhere for a *different* failure mode (a real URL that
+            // fails to load); an `<img src="">` doesn't reliably fire a
+            // genuine `error` event the same way, so that pattern wouldn't
+            // actually catch this case.
+            $composer_avatar_url = esc_url($composer_avatar_url, ['data', 'http', 'https']);
+            ?>
             <form class="tube-comments__composer" data-tube-comments-composer>
                 <img
                     class="tube-comments__composer-avatar"
-                    src="<?php echo esc_url($composer_avatar_url); ?>"
+                    src="<?php echo $composer_avatar_url; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- already run through esc_url() with an explicit protocol allow-list two lines above; re-wrapping here would just re-run the same function on an already-safe value. ?>"
                     alt=""
                     width="36"
                     height="36"
