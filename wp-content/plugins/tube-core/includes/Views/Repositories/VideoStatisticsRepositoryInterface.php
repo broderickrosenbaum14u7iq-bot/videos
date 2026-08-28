@@ -101,4 +101,54 @@ interface VideoStatisticsRepositoryInterface
      * {@see self::list_all()} for pagination totals.
      */
     public function count_all(): int;
+
+    /**
+     * This video's current `likes_total` — a single indexed primary-key
+     * read, safe to call once per single-video page render at this
+     * project's 100k+ daily visits target (the same cost class as the
+     * `views_total` read `Tube_Search\Index\SearchIndexRow` already
+     * carries for that same page).
+     *
+     * @param int $video_id The video post ID.
+     */
+    public function likes_total(int $video_id): int;
+
+    /**
+     * Atomically add 1 to a video's `likes_total`
+     * (`UPDATE ... SET likes_total = likes_total + 1`, a single indexed
+     * row-level update — never a read-then-write). Called by
+     * `Tube_Core\Likes\LikeToggleService` only after
+     * `Tube_Core\Likes\Repositories\LikeRepositoryInterface::add()`
+     * confirms a like row was genuinely, newly inserted, which is what
+     * keeps this counter from ever drifting from that table's true row
+     * count under a concurrent-toggle race.
+     *
+     * @param int $video_id The video post ID.
+     */
+    public function increment_likes(int $video_id): void;
+
+    /**
+     * Atomically subtract 1 from a video's `likes_total`, floored at 0.
+     * Same call-only-after-a-confirmed-row-change contract as
+     * {@see self::increment_likes()}.
+     *
+     * @param int $video_id The video post ID.
+     */
+    public function decrement_likes(int $video_id): void;
+
+    /**
+     * Ensure a video has a `wp_tube_video_statistics` row, seeded at
+     * `$baseline` if it doesn't already have one — an atomic
+     * "insert-if-missing" (`INSERT ... ON DUPLICATE KEY UPDATE video_id =
+     * video_id`, a genuine no-op update when a row already exists, not a
+     * read-then-decide-then-write race). Never lowers or otherwise
+     * touches an existing row's `views_total`, including one a real view
+     * has already incremented past `$baseline` — this is a floor applied
+     * once, at the moment a video first gets a statistics row, not a
+     * value re-applied or reconciled against later.
+     *
+     * @param int $video_id The video post ID.
+     * @param int $baseline The `views_total` to seed a brand-new row with.
+     */
+    public function ensure_baseline(int $video_id, int $baseline): void;
 }

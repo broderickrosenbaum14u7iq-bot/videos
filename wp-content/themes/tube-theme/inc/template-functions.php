@@ -14,6 +14,42 @@ declare(strict_types=1);
 use Tube_Search\Index\SearchIndexRow;
 
 /**
+ * The cache-busting `$ver` for one of this theme's own CSS/JS files —
+ * the file's own mtime, not the fixed `TUBE_THEME_VERSION` theme-version
+ * constant. This project's static assets are served with a long
+ * (30-day) `Cache-Control` by nginx, keyed only on the request URL
+ * (which includes `$ver`); with a version string that never changes
+ * between edits, a browser that fetched a stylesheet before a visual
+ * fix would keep serving that exact stale copy for up to a month even
+ * though the file on disk is already correct -- confirmed live during
+ * QA (2026-08-27): the tag-chip/discovery-chip/action-button CSS on
+ * disk already matched the approved design exactly (7px/6px radii,
+ * strengthened colors, no 999px pill anywhere), yet a real browser
+ * could still be showing the pre-redesign look because
+ * `tube-theme.css?ver=1.3.0` never changed URL across that whole
+ * redesign. Same root cause, same fix already applied to `tube-ads`'s
+ * own JS assets in an earlier session -- see
+ * `Tube_Ads\Plugin::asset_version()`'s own docblock for the original
+ * diagnosis this mirrors. `filemtime()` ties the query string to the
+ * file's actual last-modified time, so any future edit is a new URL
+ * and can never collide with a previously cached copy.
+ *
+ * @param string $relative_path Path under this theme's own directory, e.g. `assets/css/tube-theme.css`.
+ */
+function tube_theme_asset_version(string $relative_path): string
+{
+    $path = get_stylesheet_directory() . '/' . $relative_path;
+
+    if (! file_exists($path)) {
+        return TUBE_THEME_VERSION;
+    }
+
+    $mtime = filemtime($path);
+
+    return false !== $mtime ? (string) $mtime : TUBE_THEME_VERSION;
+}
+
+/**
  * Batch-prime both WordPress's own post cache and tube-player's video-
  * metadata cache for a list of videos about to be rendered as
  * `template-parts/video-card`s — call once before the loop, not per card.
@@ -93,6 +129,219 @@ function tube_theme_format_duration(?int $seconds): string
     return $hours > 0
         ? sprintf('%d:%02d:%02d', $hours, $minutes, $secs)
         : sprintf('%d:%02d', $minutes, $secs);
+}
+
+/**
+ * The most-used `video_tag` terms, for the homepage "Tags Phổ Biến" block
+ * and the discovery chip strip — real counts straight from WordPress's
+ * own `wp_term_taxonomy.count` column (auto-maintained by
+ * `wp_set_post_terms()` on every publish/unpublish transition), not a
+ * computed `COUNT()` query. This is exactly the mechanism
+ * `DEVELOPMENT_RULES.md`'s "reuse existing architecture" instruction
+ * points at: `get_terms()` with `orderby => 'count'` costs the same as
+ * any other `get_terms()` call, regardless of how many videos use a tag
+ * or how many tags exist — safe at 100k+ daily visits with no new
+ * caching layer.
+ *
+ * @param int $limit Maximum number of tags to return.
+ *
+ * @return WP_Term[] Highest video count first.
+ */
+function tube_theme_popular_tags(int $limit): array
+{
+    $terms = get_terms(
+        [
+            'taxonomy'   => 'video_tag',
+            'hide_empty' => true,
+            'orderby'    => 'count',
+            'order'      => 'DESC',
+            'number'     => $limit,
+        ]
+    );
+
+    return is_array($terms) ? $terms : [];
+}
+
+/**
+ * The deterministic tag-chip color class for one tag — the same tag
+ * always renders in the same one of 8 hues everywhere it appears
+ * (popular tags, single-video tags, the tags directory), never a
+ * randomly-assigned color per page render. `$term_id % 8` is stable for
+ * the life of the term (WordPress never reuses/reassigns a term's own
+ * ID), so this needs no stored mapping — see `assets/css/tube-theme.css`'s
+ * `.tag-chip--c0`..`.tag-chip--c7` for the actual color values.
+ *
+ * @param int $term_id The `video_tag` term ID.
+ */
+function tube_theme_tag_color_class(int $term_id): string
+{
+    return 'tag-chip--c' . ($term_id % 8);
+}
+
+/**
+ * The deterministic discovery-chip color class for one CATEGORY term —
+ * same idea and same `$term_id % 8` mechanism as
+ * {@see tube_theme_tag_color_class()} above (a category keeps the same
+ * hue everywhere it appears as a discovery chip, never randomized), but
+ * its own `.discovery-chip--cat-c0`..`--c7` variants (2026-08-28) rather
+ * than reusing `.tag-chip--cN` directly: discovery chips need three
+ * visually distinct tiers (primary filter / category / tag), so
+ * categories get the same 8-hue palette at their own "medium" opacity
+ * tier, sitting between the primary trio's single strong accent and the
+ * tag chips' subtler `.tag-chip--cN` treatment (reused as-is for
+ * discovery tag chips, so a tag keeps one true color everywhere on the
+ * site, not a second independent one just for this component).
+ *
+ * @param int $term_id The `video_category` term ID.
+ */
+function tube_theme_discovery_category_color_class(int $term_id): string
+{
+    return 'discovery-chip--cat-c' . ($term_id % 8);
+}
+
+/**
+ * A discovery chip's emoji prefix + (optionally) a hand-picked gradient
+ * class for one CATEGORY term, keyed by slug — curated for this site's
+ * own known categories (2026-08-28 chip polish: two-tone gradients +
+ * contextual emoji), never a name-matching heuristic that could
+ * mismatch an unrelated category. A category not in this map still gets
+ * a real, working chip: a generic 🎬 emoji and `color_class: null`,
+ * which callers fall back to
+ * {@see tube_theme_discovery_category_color_class()}'s own deterministic
+ * `$term_id % 8` cyclical gradient for — so a brand-new category never
+ * renders broken or uncolored, just less individually "designed" than
+ * the ones explicitly curated here.
+ *
+ * @param string $slug The `video_category` term's slug.
+ *
+ * @return array{emoji: string, color_class: string|null}
+ */
+function tube_theme_discovery_category_meta(string $slug): array
+{
+    $known = [
+        'phim-chau-a'   => [
+            'emoji'       => '🌏',
+            'color_class' => 'discovery-chip--cat-asia',
+        ],
+        'phim-chau-phi' => [
+            'emoji'       => '🌍',
+            'color_class' => 'discovery-chip--cat-africa',
+        ],
+        'phim-nhat'     => [
+            'emoji'       => '🎌',
+            'color_class' => 'discovery-chip--cat-japan',
+        ],
+        'phim-viet'     => [
+            'emoji'       => '🇻🇳',
+            'color_class' => 'discovery-chip--cat-vietnam',
+        ],
+        'phim-han'      => [
+            'emoji'       => '🇰🇷',
+            'color_class' => null,
+        ],
+        'phim-my'       => [
+            'emoji'       => '🇺🇸',
+            'color_class' => null,
+        ],
+    ];
+
+    return $known[ $slug ] ?? [
+        'emoji'       => '🎬',
+        'color_class' => null,
+    ];
+}
+
+/**
+ * Compact display formatting for a real count (views, likes) — "999",
+ * "1.2K", "18K", "1.2M" — display formatting only, never altering the
+ * real underlying number anywhere it's stored/compared. Exists so a
+ * view/like count with many digits can never be the reason a compact
+ * control (the action bar, a video-card meta row) grows wide enough to
+ * force layout overflow — the real fix for that class of bug is still
+ * `flex-wrap`/`min-width: 0` where the control lives (see
+ * `.video-actions`'s own CSS comment), this is what keeps the number
+ * itself short in the first place.
+ *
+ * @param int $count The real count.
+ */
+function tube_theme_compact_number(int $count): string
+{
+    if ($count < 1000) {
+        return number_format_i18n($count);
+    }
+
+    if ($count < 1000000) {
+        $value = $count / 1000;
+
+        return number_format_i18n($value, $value < 10 ? 1 : 0) . 'K';
+    }
+
+    $value = $count / 1000000;
+
+    return number_format_i18n($value, $value < 10 ? 1 : 0) . 'M';
+}
+
+/**
+ * Human-friendly relative publish time for the mobile watch page's meta
+ * row (e.g. "12 phút trước", "2 giờ trước", "Hôm qua") — display
+ * formatting only, computed fresh from `$published_at_gmt` on every call;
+ * WordPress's own canonical `post_date`/`post_date_gmt` are never read
+ * from or written to here.
+ *
+ * @param string $published_at_gmt `SearchIndexRow::$published_at` — a MySQL `DATETIME` string in UTC
+ *                                  (`WP_Post::$post_date_gmt`, per `VideoIndexer`), or `''` if unknown.
+ */
+function tube_theme_relative_time(string $published_at_gmt): string
+{
+    if ('' === $published_at_gmt) {
+        return '';
+    }
+
+    $timestamp = strtotime($published_at_gmt . ' +00:00');
+
+    if (false === $timestamp) {
+        return '';
+    }
+
+    $diff_seconds = time() - $timestamp;
+
+    if ($diff_seconds < 60) {
+        return __('Vừa xong', 'tube-theme');
+    }
+
+    if ($diff_seconds < HOUR_IN_SECONDS) {
+        return sprintf(
+            /* translators: %d: number of minutes. */
+            __('%d phút trước', 'tube-theme'),
+            intdiv($diff_seconds, MINUTE_IN_SECONDS)
+        );
+    }
+
+    if ($diff_seconds < DAY_IN_SECONDS) {
+        return sprintf(
+            /* translators: %d: number of hours. */
+            __('%d giờ trước', 'tube-theme'),
+            intdiv($diff_seconds, HOUR_IN_SECONDS)
+        );
+    }
+
+    if ($diff_seconds < 2 * DAY_IN_SECONDS) {
+        return __('Hôm qua', 'tube-theme');
+    }
+
+    if ($diff_seconds < 30 * DAY_IN_SECONDS) {
+        return sprintf(
+            /* translators: %d: number of days. */
+            __('%d ngày trước', 'tube-theme'),
+            intdiv($diff_seconds, DAY_IN_SECONDS)
+        );
+    }
+
+    // Older than 30 days: a real (site-timezone) date, numeric-only so it
+    // never depends on a loaded locale's month-name translations.
+    $formatted = wp_date('d/m/Y', $timestamp);
+
+    return false === $formatted ? '' : $formatted;
 }
 
 /**
@@ -187,4 +436,121 @@ function tube_theme_resolve_page_template_urls(): array
     }
 
     return $map;
+}
+
+/**
+ * Echo one footer social icon as inline SVG — no icon-font/library
+ * dependency for four icons that never change. `esc_html()` isn't used
+ * (these are fixed, hand-authored markup strings with no user input in
+ * them, the same posture `tube_seo_head()` takes for its own static
+ * inline markup), but the *key* is validated against an explicit
+ * allow-list first so a caller can never echo arbitrary markup through
+ * this function.
+ *
+ * @param string $key One of `facebook`, `telegram`, `twitter`, `youtube`.
+ */
+function tube_theme_social_icon(string $key): void
+{
+    $icons = [
+        'facebook' => '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.18 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.51 1.49-3.9 3.77-3.9 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.87h2.78l-.44 2.91h-2.34V22c4.78-.76 8.44-4.92 8.44-9.94Z"/></svg>',
+        'telegram' => '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M21.9 4.6 18.6 20.3c-.25 1.1-.9 1.38-1.83.86l-5.06-3.73-2.44 2.35c-.27.27-.5.5-1.02.5l.36-5.16 9.4-8.5c.41-.36-.09-.56-.63-.2L6.2 13.1l-5.02-1.57c-1.1-.34-1.11-1.1.23-1.63L20.5 3.2c.9-.34 1.7.2 1.4 1.4Z"/></svg>',
+        'twitter'  => '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M13.9 10.4 21 2h-2.2l-6.16 7.1L7.7 2H2l7.45 10.7L2.3 22h2.2l6.5-7.5L16.3 22H22l-8.1-11.6ZM11.4 13.3l-.75-1.07L4.7 3.6h2.6l4.85 6.94.75 1.07 6.3 9h-2.6l-5.2-7.3Z"/></svg>',
+        'youtube'  => '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M23.5 7.2s-.23-1.64-.94-2.36c-.9-.95-1.9-.95-2.36-1.01C16.9 3.5 12 3.5 12 3.5h-.01s-4.9 0-8.2.33c-.46.06-1.46.06-2.36 1.01-.71.72-.94 2.36-.94 2.36S0 9.14 0 11.08v1.8c0 1.94.23 3.88.23 3.88s.23 1.64.94 2.36c.9.95 2.08.92 2.6 1.02 1.9.18 8.06.34 8.23.34.01 0 4.9 0 8.2-.33.46-.06 1.46-.06 2.36-1.02.71-.72.94-2.36.94-2.36s.23-1.94.23-3.88v-1.8c0-1.94-.23-3.88-.23-3.88ZM9.55 15.4V7.98l6.4 3.72-6.4 3.7Z"/></svg>',
+    ];
+
+    if (isset($icons[ $key ])) {
+        echo $icons[ $key ]; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- fixed, hand-authored SVG markup gated by an explicit allow-listed $key; no user input reaches this string.
+    }
+}
+
+/**
+ * Echo the header brand slot — one renderer for both modes (2026-08-28),
+ * not two duplicate header blocks. Reads `tube_theme_header_brand_mode`
+ * (`text`/`logo`, {@see tube_theme_sanitize_header_brand_mode()}) and
+ * WordPress's own native custom-logo theme_mod (`custom_logo`, set by
+ * `add_theme_support('custom-logo')` + the core Site Identity "Logo"
+ * control — never a bespoke raw-URL field). Falls back to the text
+ * brand whenever logo mode is selected but no logo is set, the
+ * attachment was deleted, or it isn't actually an image — this
+ * function can never emit a broken `<img>`, a blank header, or an
+ * empty link, only ever one of the two real states.
+ *
+ * Both modes render inside the *same* `.site-header__home` anchor
+ * (unchanged — every existing mobile-row order/flex-shrink/sizing rule
+ * in tube-theme.css still targets it) with an added `.site-brand`
+ * class for the normalized selector set this feature introduces
+ * (`.site-brand`, `.site-brand__text`, `.site-brand__logo`).
+ */
+function tube_theme_render_site_brand(): void
+{
+    $mode = get_theme_mod('tube_theme_header_brand_mode', 'text');
+    $mode = is_string($mode) ? $mode : 'text';
+
+    $logo_id = 'logo' === $mode ? get_theme_mod('custom_logo') : 0;
+    $logo_id = is_numeric($logo_id) ? (int) $logo_id : 0;
+
+    if ($logo_id > 0 && wp_attachment_is_image($logo_id)) {
+        tube_theme_render_site_brand_logo($logo_id);
+
+        return;
+    }
+
+    tube_theme_render_site_brand_text();
+}
+
+/**
+ * The text-brand slot -- `get_bloginfo('name')` (never a hardcoded
+ * site name), with the existing red accent dot preserved as its own
+ * explicit `.site-brand__accent` class (was a bare `span` selector,
+ * `.site-header__home span`, before this task -- narrowed on purpose
+ * so a future span added anywhere else inside this link, such as the
+ * `.site-brand__text` wrapper this same change introduces, can never
+ * accidentally pick up the accent color too).
+ */
+function tube_theme_render_site_brand_text(): void
+{
+    ?>
+    <a class="site-header__home site-brand" href="<?php echo esc_url(home_url('/')); ?>">
+        <span class="site-brand__text"><?php bloginfo('name'); ?></span><span class="site-brand__accent">.</span>
+    </a>
+    <?php
+}
+
+/**
+ * The logo-brand slot. `wp_get_attachment_image()` (a core media API,
+ * not a hand-built `<img src="">`) so width/height/srcset come from
+ * the attachment's own real metadata whenever available. Alt text
+ * follows the exact same fallback WordPress core's own
+ * `get_custom_logo()` uses internally: the attachment's own alt text
+ * if set, else the site name -- so the link (whose only content is
+ * this image) always has a real accessible name. No separate
+ * `aria-label` on the anchor: with a single-image link, the image's
+ * own `alt` already *is* the link's accessible name, and adding a
+ * second one risks a screen reader announcing the name twice.
+ *
+ * @param int $logo_id Attachment ID, already verified to be a real image by the caller.
+ */
+function tube_theme_render_site_brand_logo(int $logo_id): void
+{
+    $alt = get_post_meta($logo_id, '_wp_attachment_image_alt', true);
+    $alt = is_string($alt) && '' !== trim($alt) ? $alt : get_bloginfo('name');
+
+    ?>
+    <a class="site-header__home site-brand site-brand--logo" href="<?php echo esc_url(home_url('/')); ?>">
+        <span class="site-brand__logo">
+            <?php
+            echo wp_get_attachment_image(
+                $logo_id,
+                'full',
+                false,
+                [
+                    'alt'      => $alt,
+                    'loading'  => 'eager',
+                    'decoding' => 'async',
+                ]
+            );
+            ?>
+        </span>
+    </a>
+    <?php
 }

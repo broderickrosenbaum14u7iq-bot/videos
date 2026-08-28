@@ -13,6 +13,7 @@ use RuntimeException;
 use Tube_Core\Plugin as Tube_Core_Plugin;
 use Tube_Core\Video\VideoMetadata;
 use Tube_Player\Plugin as Tube_Player_Plugin;
+use Tube_Player\Video\ImageSize;
 use Tube_Player\Video\VideoProviderInterface;
 
 /**
@@ -187,10 +188,16 @@ final class SitemapGenerator
 
     /**
      * Build one sitemap entry per published video that has usable
-     * Cloudflare Stream metadata. A video with no metadata row yet (not
-     * finished encoding) has no real thumbnail/player URL to publish and
-     * is deliberately omitted — the same "not ready" gate `tube-player`'s
-     * own rendering already applies elsewhere in this project.
+     * Cloudflare Stream metadata AND a resolvable WordPress Media
+     * Library image — og_image_id if set, else poster_image_id (see
+     * self::build_entry()'s docblock) — (ADR-0001's 2026-08-25 addendum:
+     * there is no Cloudflare Stream thumbnail fallback anywhere in this
+     * project, and Google's video sitemap protocol requires
+     * `<video:thumbnail_loc>` — a real value, not a fabricated one).
+     * Either gap means there's no real thumbnail/player URL to publish
+     * yet, so the video is deliberately omitted — the same "not ready"
+     * gate `tube-player`'s own rendering already applies elsewhere in
+     * this project.
      *
      * @param array<int, array{video_id: int, post_date_gmt: string, post_modified_gmt: string}> $rows Rows from
      *     PublishedVideoRepository::published_videos().
@@ -230,18 +237,25 @@ final class SitemapGenerator
                 continue;
             }
 
-            $entries[] = $this->build_entry($row, $metadata, $provider);
+            $entry = $this->build_entry($row, $metadata, $provider);
+
+            if (null !== $entry) {
+                $entries[] = $entry;
+            }
         }
 
         return $entries;
     }
 
     /**
-     * Build one video's sitemap entry.
+     * Build one video's sitemap entry, or null if it has no resolvable
+     * WordPress Media Library OG-image (see self::build_entries()'s
+     * docblock for why that omits the video entirely rather than
+     * publishing an invalid/fabricated `thumbnail_loc`).
      *
      * @param array<string, int|string> $row      One published-video row.
      * @param VideoMetadata             $metadata The video's Cloudflare Stream metadata.
-     * @param VideoProviderInterface    $provider Resolves thumbnail/embed URLs.
+     * @param VideoProviderInterface    $provider Resolves the embed URL.
      *
      * @phpstan-param array{video_id: int, post_date_gmt: string, post_modified_gmt: string} $row
      */
@@ -249,8 +263,33 @@ final class SitemapGenerator
         array $row,
         VideoMetadata $metadata,
         VideoProviderInterface $provider
-    ): VideoSitemapEntry {
+    ): ?VideoSitemapEntry {
         $video_id = $row['video_id'];
+
+        // resolve_urls() resolves metadata->og_image_id (a WordPress
+        // attachment ID, ADR-0001) — still the only image *source type*
+        // (WordPress Media Library, no Cloudflare Stream thumbnail
+        // fallback, 2026-08-25 addendum) — but falls back to
+        // metadata->poster_image_id when no OG-image override has been
+        // set: the current admin editing flow (PosterImageMetaBox) only
+        // ever writes poster_image_id, never og_image_id, so requiring
+        // og_image_id alone silently excluded every real published video
+        // from this sitemap (2026-08-26 SEO audit finding, P0). Both IDs
+        // are still WordPress Media Library attachments; this changes
+        // which existing field is read, not how either is set or
+        // rendered elsewhere. Final fallback is WordPress's own native
+        // Featured Image (`_thumbnail_id`) — a real attachment some
+        // videos already have set even though neither tube-core image
+        // field was ever populated for them (2026-08-26 SEO audit P2
+        // finding, investigated per-video, not assumed).
+        $image_url = Tube_Player_Plugin::instance()->image_renderer()->resolve_urls(
+            $metadata->og_image_id ?? $metadata->poster_image_id ?? self::native_featured_image_id($video_id),
+            ImageSize::OgImage
+        )['src'];
+
+        if (null === $image_url) {
+            return null;
+        }
 
         $loc = get_permalink($video_id);
         $loc = false === $loc ? home_url('/') : $loc;
@@ -266,11 +305,25 @@ final class SitemapGenerator
             self::to_w3c_datetime($row['post_modified_gmt']),
             $title,
             $description,
-            $provider->thumbnail_url($metadata->cf_stream_uid, $metadata->thumbnail_time_seconds, 1200, 630),
+            $image_url,
             $provider->embed_url($metadata->cf_stream_uid),
             self::to_w3c_datetime($row['post_date_gmt']),
             $metadata->duration_seconds
         );
+    }
+
+    /**
+     * This video's WordPress native Featured Image attachment ID, if
+     * one is set — the final image fallback (see self::build_entry()'s
+     * docblock comment for why).
+     *
+     * @param int $video_id The video post ID.
+     */
+    private static function native_featured_image_id(int $video_id): ?int
+    {
+        $thumbnail_id = get_post_thumbnail_id($video_id);
+
+        return false === $thumbnail_id || 0 === $thumbnail_id ? null : (int) $thumbnail_id;
     }
 
     /**

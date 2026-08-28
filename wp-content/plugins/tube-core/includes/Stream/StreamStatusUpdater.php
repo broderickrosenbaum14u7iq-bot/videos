@@ -76,23 +76,43 @@ final class StreamStatusUpdater
             throw new InvalidArgumentException("No video found for Cloudflare Stream UID \"{$cf_stream_uid}\".");
         }
 
-        $current_status = $this->metadata_repository->status_for($video_id);
+        $current = $this->metadata_repository->find($video_id);
 
-        if ($current_status === $status && null === $duration_seconds) {
+        // find_video_id_by_stream_uid() just found this exact video_id by
+        // reading the same table find() reads — a null $current here would
+        // mean the row vanished between those two reads within the same
+        // request, not a real state this method needs to handle.
+        $status_changed   = null === $current || $current->cf_status !== $status;
+        $duration_changed = null !== $duration_seconds
+            && (null === $current || $duration_seconds !== $current->duration_seconds);
+
+        if (! $status_changed && ! $duration_changed) {
             return;
         }
 
         $this->metadata_repository->update_status($video_id, $status, $duration_seconds);
 
-        if ($current_status !== $status) {
-            $this->dispatcher->dispatch(
-                EventCatalog::VIDEO_STREAM_STATUS_CHANGED,
-                [
-                    'video_id' => $video_id,
-                    'status'   => $status->value,
-                ]
-            );
-        }
+        // Reaching here already means $status_changed || $duration_changed
+        // (the guard above returned otherwise), so this dispatch is
+        // unconditional at this point — not status-changed alone. A video
+        // already sitting at Ready (imported long before its real duration
+        // was ever fetched, or resynced after Cloudflare finishes encoding)
+        // can have its duration go from null/stale to a real value with no
+        // status transition at all; Tube_Search\Events\SearchIndexSyncSubscriber
+        // and Tube_Cache\Events\CachePurgeSubscriber both only listen for
+        // this event (not a bare "duration changed" signal), so a
+        // status-only dispatch condition would let such a resync silently
+        // write the correct canonical duration_seconds while leaving
+        // wp_tube_search_index — what the homepage/category/search cards
+        // actually render from — stale forever. This is exactly the gap a
+        // batch resync of already-Ready videos would hit.
+        $this->dispatcher->dispatch(
+            EventCatalog::VIDEO_STREAM_STATUS_CHANGED,
+            [
+                'video_id' => $video_id,
+                'status'   => $status->value,
+            ]
+        );
 
         if (CfStreamStatus::Ready === $status) {
             $this->maybe_publish($video_id);

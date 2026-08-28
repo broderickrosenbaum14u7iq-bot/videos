@@ -48,19 +48,19 @@ $tube_theme_permalink = false === $tube_theme_permalink ? '' : $tube_theme_perma
     </div>
     <div class="hero__scrim"></div>
     <div class="hero__content">
-        <span class="hero__eyebrow"><?php esc_html_e('#1 Trending', 'tube-theme'); ?></span>
+        <span class="hero__eyebrow"><?php esc_html_e('#1 Thịnh Hành', 'tube-theme'); ?></span>
         <h1 class="hero__title"><?php echo esc_html($tube_theme_video->title); ?></h1>
         <p class="hero__meta">
             <?php
             printf(
                 /* translators: %s: formatted view count. */
-                esc_html__('%s views', 'tube-theme'),
-                esc_html(number_format_i18n($tube_theme_video->views_total))
+                esc_html__('%s lượt xem', 'tube-theme'),
+                esc_html(tube_theme_compact_number($tube_theme_video->views_total))
             );
             ?>
         </p>
         <a class="hero__cta" href="<?php echo esc_url($tube_theme_permalink); ?>">
-            <?php esc_html_e('Watch now', 'tube-theme'); ?>
+            ▶ <?php esc_html_e('Xem ngay', 'tube-theme'); ?>
         </a>
     </div>
 </section>

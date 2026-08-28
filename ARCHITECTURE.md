@@ -204,14 +204,17 @@ This table is also the concrete deliverable for Phase 0/1 infra setup — it's t
 
 ## 8. Image management architecture (poster, thumbnails, WebP)
 
-Two-tier design, mirroring the "store IDs, not URLs" principle already applied to video:
+**Revised by ADR-0001 (2026-08-24), further revised by its 2026-08-25 addendum** — see `adr/0001-media-library-poster-images.md` for the full trigger/migration/rollback record and `ARCHITECTURE-CHANGELOG.md`'s corresponding entry. The text below reflects the current (post-addendum) design; §8.2 originally routed the override path to Cloudflare Images, which ADR-0001 reversed, and ADR-0001 originally kept a Cloudflare Stream thumbnail-extraction default for videos with no override, which the 2026-08-25 addendum reversed too.
 
-1. **Default poster (the common case, ~all 500,000+ videos)**: no image is stored or uploaded at all. `tube-player` requests a thumbnail directly from Cloudflare Stream's thumbnail endpoint using the stored `cf_stream_uid` and `thumbnail_time_seconds` (from `wp_tube_video_metadata`), at render time, with size/format parameters. Zero storage cost, zero upload workflow, scales to the full catalog for free.
-2. **Custom poster override (the exception)**: for the minority of videos where an editor wants a hand-picked image instead of an auto-extracted frame, the image is uploaded through `tube-admin`'s editorial UI and stored in **Cloudflare Images** (not the local WordPress media library) — for the same reason video isn't stored locally: at this scale, generating and storing multiple local derivative sizes per image (WordPress's default behavior on upload) would mean millions of physical files on the origin server. Only the Cloudflare Images ID is stored, in `wp_tube_video_metadata.poster_image_id` / `og_image_id` — never a URL.
+Single-source design. Video itself still stores only an identifier, never bytes or a URL (§2.1, unchanged):
 
-**Delivery**: `tube-player` constructs the actual `<img>`/`<picture>` markup at render time via `tube_player_get_image_html( $video_id, $size )`, requesting the appropriate variant (grid-card, hero, OG-image) and letting Cloudflare's `format=auto` content negotiation serve WebP/AVIF to browsers that support it and JPEG as a fallback — no format conversion or resizing logic lives in WordPress at all. Responsive `srcset` is generated from Cloudflare's resizing variants, not from locally-generated intermediate sizes.
+The **WordPress Media Library** is the only poster/OG-image source. An editor uploads or selects an image through `tube-admin`'s editorial UI (WordPress's native media modal — upload-from-computer and select-existing-library-item in one interface); only the WordPress attachment ID is stored, in `wp_tube_video_metadata.poster_image_id` / `og_image_id` — never a URL, never a copy of the image bytes outside WordPress's own standard media-library storage. A video with no attachment set (or a stale/deleted attachment ID) renders **no image at all** — the theme's own container styling is the empty state (ADR-0001's 2026-08-25 addendum). There is no Cloudflare Stream thumbnail-extraction fallback anywhere in this path.
 
-This is why image management is owned by `tube-player` (rendering) with `tube-admin` only providing the upload UI for the override case — there's no dedicated image-processing plugin because there's deliberately very little image *processing* happening on the WordPress server itself.
+**Delivery**: `tube-player` constructs the actual `<img>` markup at render time via `tube_player_get_image_html( $video_id, $size )`, resolving `wp_get_attachment_image_url()`/`wp_get_attachment_image_srcset()` against the stored attachment ID — ordinary WordPress media-library behavior. Returns `''` (no tag) when there is no resolvable attachment.
+
+Image management is still owned by `tube-player` (rendering) with `tube-admin` providing the picker UI — no dedicated image-processing plugin exists, and none is needed.
+
+Actor/studio profile photos (`ARCHITECTURE.md` §12 Phase 13 — `ProfileImageHtmlRenderer`, `ImageSize::Avatar`) are a **separate feature, explicitly out of scope for ADR-0001** and remain on Cloudflare Images exactly as Phase 13 built them.
 
 ---
 
@@ -272,9 +275,9 @@ Carried forward from Revision 2 (still unresolved) plus one new item:
 2. **Search backend timing** — `wp_tube_search_index` on MySQL FULLTEXT to start (as designed), or commit to OpenSearch/Elasticsearch as the index's backing store from Phase 7 directly?
 3. **Read replica infrastructure** — does the current single VPS support adding a replica, or does this require new infrastructure ahead of Phase 11?
 4. **Repo structure** — one monorepo for all six plugins + theme, or seven separate repositories? Affects Composer/CI setup in Phase 0.
-5. **New: Cloudflare Images vs. local media library for custom poster overrides (§8)** — recommended default is Cloudflare Images for consistency/scale with the video storage decision, but this adds a second Cloudflare product/cost to confirm before Phase 6.
+5. ~~Cloudflare Images vs. local media library for custom poster overrides (§8)~~ — **Resolved by ADR-0001 (2026-08-24): WordPress Media Library.** See `adr/0001-media-library-poster-images.md`. This reverses Revision 5's original recommendation (Cloudflare Images) once the confirmed production target (3,000–10,000 videos, `RELEASE.md`) made the original millions-of-files concern inapplicable to the override path.
 
-This section (§13) and its predecessors are carried forward unchanged from Revision 3. What follows is new content added for this final revision.
+This section (§13) and its predecessors are carried forward unchanged from Revision 3, except item 5 above, resolved post-freeze via ADR-0001. What follows is new content added for this final revision.
 
 ---
 

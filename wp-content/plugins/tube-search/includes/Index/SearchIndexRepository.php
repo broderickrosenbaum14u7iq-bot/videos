@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace Tube_Search\Index;
 
 use RuntimeException;
+use Tube_Search\Search\TextNormalizer;
 
 /**
  * Data access for `wp_tube_search_index`, implementing both the write
@@ -75,28 +76,82 @@ final class SearchIndexRepository implements SearchIndexRepositoryInterface, Dis
 
         $now = current_time('mysql', true);
 
-        $sql = $wpdb->prepare(
-            'INSERT INTO %i (video_id, title, description, category_ids, tag_ids, actor_ids, studio_ids,'
-                . ' duration_seconds, views_total, published_at, indexed_at)'
-                . ' VALUES (%d, %s, %s, %s, %s, %s, %s, %d, %d, %s, %s)'
-                . ' ON DUPLICATE KEY UPDATE title = VALUES(title), description = VALUES(description),'
-                . ' category_ids = VALUES(category_ids), tag_ids = VALUES(tag_ids),'
-                . ' actor_ids = VALUES(actor_ids), studio_ids = VALUES(studio_ids),'
-                . ' duration_seconds = VALUES(duration_seconds), views_total = VALUES(views_total),'
-                . ' published_at = VALUES(published_at), indexed_at = VALUES(indexed_at)',
-            $wpdb->prefix . 'tube_search_index',
-            $video_id,
-            $title,
-            $description,
-            self::encode_ids($category_ids),
-            self::encode_ids($tag_ids),
-            self::encode_ids($actor_ids),
-            self::encode_ids($studio_ids),
-            $duration_seconds,
-            $views_total,
-            $published_at,
-            $now
-        );
+        // $wpdb->prepare()'s %d placeholder always casts its argument via
+        // (int) coercion, including null -> 0 -- there is no way to bind
+        // a genuine SQL NULL through a %d placeholder. duration_seconds
+        // is a nullable column (unknown until Cloudflare reports it, per
+        // ARCHITECTURE.md §2.6/§8), so the two cases get two separate,
+        // fully-literal query strings (no shared/interpolated fragment)
+        // rather than one template with a dynamic placeholder — the
+        // standard WordPress-idiomatic shape for a conditionally-NULL
+        // column, and the only shape WPCS's own placeholder-counting
+        // sniffs can verify statically. Found via a real reproduction: a
+        // video indexed at video.published time before Cloudflare had
+        // ever reported a duration silently stored 0 instead of NULL,
+        // which the frontend then rendered as a fabricated "0:00"
+        // instead of the correct empty/unknown state
+        // (tube_theme_format_duration() already treats null correctly;
+        // it never saw null because it was never stored).
+        $table = $wpdb->prefix . 'tube_search_index';
+
+        // The one shared normalization pipeline (Tube_Search\Search\TextNormalizer),
+        // applied identically here (indexing) and in self::search()
+        // (querying) — see that class's own docblock for why title alone
+        // isn't enough: a query word appearing only in the description
+        // must still be findable, exactly as the superseded
+        // MATCH(title, description) FULLTEXT column already allowed.
+        $search_text_normalized = TextNormalizer::normalize($title . ' ' . ($description ?? ''));
+
+        if (null === $duration_seconds) {
+            $sql = $wpdb->prepare(
+                'INSERT INTO %i (video_id, title, description, category_ids, tag_ids, actor_ids, studio_ids,'
+                    . ' duration_seconds, views_total, published_at, indexed_at, search_text_normalized)'
+                    . ' VALUES (%d, %s, %s, %s, %s, %s, %s, NULL, %d, %s, %s, %s)'
+                    . ' ON DUPLICATE KEY UPDATE title = VALUES(title), description = VALUES(description),'
+                    . ' category_ids = VALUES(category_ids), tag_ids = VALUES(tag_ids),'
+                    . ' actor_ids = VALUES(actor_ids), studio_ids = VALUES(studio_ids),'
+                    . ' duration_seconds = VALUES(duration_seconds), views_total = VALUES(views_total),'
+                    . ' published_at = VALUES(published_at), indexed_at = VALUES(indexed_at),'
+                    . ' search_text_normalized = VALUES(search_text_normalized)',
+                $table,
+                $video_id,
+                $title,
+                $description,
+                self::encode_ids($category_ids),
+                self::encode_ids($tag_ids),
+                self::encode_ids($actor_ids),
+                self::encode_ids($studio_ids),
+                $views_total,
+                $published_at,
+                $now,
+                $search_text_normalized
+            );
+        } else {
+            $sql = $wpdb->prepare(
+                'INSERT INTO %i (video_id, title, description, category_ids, tag_ids, actor_ids, studio_ids,'
+                    . ' duration_seconds, views_total, published_at, indexed_at, search_text_normalized)'
+                    . ' VALUES (%d, %s, %s, %s, %s, %s, %s, %d, %d, %s, %s, %s)'
+                    . ' ON DUPLICATE KEY UPDATE title = VALUES(title), description = VALUES(description),'
+                    . ' category_ids = VALUES(category_ids), tag_ids = VALUES(tag_ids),'
+                    . ' actor_ids = VALUES(actor_ids), studio_ids = VALUES(studio_ids),'
+                    . ' duration_seconds = VALUES(duration_seconds), views_total = VALUES(views_total),'
+                    . ' published_at = VALUES(published_at), indexed_at = VALUES(indexed_at),'
+                    . ' search_text_normalized = VALUES(search_text_normalized)',
+                $table,
+                $video_id,
+                $title,
+                $description,
+                self::encode_ids($category_ids),
+                self::encode_ids($tag_ids),
+                self::encode_ids($actor_ids),
+                self::encode_ids($studio_ids),
+                $duration_seconds,
+                $views_total,
+                $published_at,
+                $now,
+                $search_text_normalized
+            );
+        }
 
         if (null === $sql) {
             throw new RuntimeException('wpdb::prepare() returned null for the upsert() query in ' . self::class . '.');
@@ -400,6 +455,15 @@ final class SearchIndexRepository implements SearchIndexRepositoryInterface, Dis
     /**
      * {@inheritDoc}
      *
+     * Matches against `search_text_normalized`
+     * (`Tube_Search\Search\TextNormalizer::normalize()`-folded
+     * title+description), never raw `title`/`description` — `$query` is
+     * run through the exact same normalizer before matching, so an
+     * accented, differently-cased, or extra-whitespace query compares
+     * equal to how the same text was indexed, rather than depending on
+     * MySQL collation folding (inconsistent for Vietnamese — see
+     * `Migration002AddNormalizedSearchText`'s own docblock).
+     *
      * MySQL `FULLTEXT`'s default InnoDB `ft_min_word_len` (4 characters)
      * silently ignores shorter query words entirely — a server-level
      * setting, not something this method works around; a 1–3 character
@@ -417,17 +481,19 @@ final class SearchIndexRepository implements SearchIndexRepositoryInterface, Dis
         global $wpdb;
         /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
 
+        $normalized_query = TextNormalizer::normalize($query);
+
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
         $rows = $wpdb->get_results(
             $wpdb->prepare(
                 // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- self::COLUMNS is a fixed internal constant (never caller-supplied), not a value; every actual value is still a %s/%i/%d-bound argument.
-                'SELECT ' . self::COLUMNS . ', MATCH(title, description) AGAINST (%s IN NATURAL LANGUAGE MODE)'
+                'SELECT ' . self::COLUMNS . ', MATCH(search_text_normalized) AGAINST (%s IN NATURAL LANGUAGE MODE)'
                     . ' AS relevance FROM %i'
-                    . ' WHERE MATCH(title, description) AGAINST (%s IN NATURAL LANGUAGE MODE)'
+                    . ' WHERE MATCH(search_text_normalized) AGAINST (%s IN NATURAL LANGUAGE MODE)'
                     . ' ORDER BY relevance DESC LIMIT %d OFFSET %d',
-                $query,
+                $normalized_query,
                 $wpdb->prefix . 'tube_search_index',
-                $query,
+                $normalized_query,
                 $limit,
                 $offset
             ),

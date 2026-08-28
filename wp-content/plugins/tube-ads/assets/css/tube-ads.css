@@ -1,0 +1,143 @@
+/*
+ * tube-ads — display-placement + pre-roll overlay styles.
+ *
+ * Device targeting is CSS-only (2026-08-26 §17): `.tube-ads-desktop-only`/
+ * `.tube-ads-mobile-only` use this project's own established breakpoint
+ * (1024px — the same one tube-theme.css's own watch-layout grid switches
+ * on), not an invented one. Dark, compact aesthetic matching the rest of
+ * the site; ad controls are visually distinct from tube-player's own
+ * controls (no shared classes) so the two are never confused.
+ */
+
+.tube-ads-slot {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    margin: 20px 0;
+}
+
+.tube-ads-slot__banner-image,
+.tube-ads__banner-image {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+}
+
+.tube-ads__banner-link {
+    display: block;
+    text-decoration: none;
+}
+
+@media (max-width: 1023.98px) {
+    .tube-ads-desktop-only {
+        display: none;
+    }
+}
+
+@media (min-width: 1024px) {
+    .tube-ads-mobile-only {
+        display: none;
+    }
+}
+
+/* Pre-roll overlay -- fills the existing [data-tube-player] box, which
+   is already position:relative/overflow:hidden (tube-player.css) --
+   this stylesheet never needs to redeclare that on the player itself. */
+.tube-ads-preroll {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    background: #000;
+    display: flex;
+    align-items: flex-end;
+}
+
+.tube-ads-preroll__video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+}
+
+.tube-ads-preroll__badge {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 1;
+    background: rgba(0, 0, 0, 0.72);
+    color: #fff;
+    font-size: 0.75rem;
+    line-height: 1;
+    padding: 6px 10px;
+    border-radius: 6px;
+    pointer-events: none;
+}
+
+.tube-ads-preroll__skip {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    z-index: 1;
+    background: rgba(20, 20, 20, 0.85);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 6px;
+    font-size: 0.75rem;
+    line-height: 1;
+    padding: 7px 12px;
+    cursor: pointer;
+}
+
+.tube-ads-preroll__skip:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.tube-ads-preroll__skip:not(:disabled):hover {
+    background: rgba(35, 35, 35, 0.95);
+}
+
+.tube-ads-preroll__skip:focus-visible {
+    outline: 2px solid #ff5a5f;
+    outline-offset: 2px;
+}
+
+.tube-ads-preroll__unmute {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1;
+    background: rgba(20, 20, 20, 0.85);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 6px;
+    font-size: 0.75rem;
+    line-height: 1;
+    padding: 7px 12px;
+    cursor: pointer;
+    max-width: calc(100% - 20px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tube-ads-preroll__unmute:hover {
+    background: rgba(35, 35, 35, 0.95);
+}
+
+.tube-ads-preroll__unmute:focus-visible {
+    outline: 2px solid #ff5a5f;
+    outline-offset: 2px;
+}
+
+@media (max-width: 599.98px) {
+    .tube-ads-preroll__badge,
+    .tube-ads-preroll__skip,
+    .tube-ads-preroll__unmute {
+        font-size: 0.6875rem;
+        padding: 5px 9px;
+    }
+}

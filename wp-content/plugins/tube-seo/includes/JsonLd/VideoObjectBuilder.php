@@ -23,7 +23,9 @@ final class VideoObjectBuilder
      *
      * @param string      $name          The video's title.
      * @param string      $description   The video's description.
-     * @param string      $thumbnail_url The video's poster/thumbnail URL.
+     * @param string|null $thumbnail_url The video's WordPress Media Library poster/OG-image URL, or null if the
+     *     editor hasn't set one yet (ADR-0001 — no Cloudflare Stream thumbnail fallback, see the 2026-08-25
+     *     addendum). Not fabricated: omitted from the structure entirely rather than emitted as an empty string.
      * @param string      $upload_date   ISO 8601 upload/publish date-time.
      * @param string|null $duration      ISO 8601 duration (e.g. `PT5M30S`), or null if unknown.
      * @param string      $embed_url     The Cloudflare Stream embed URL.
@@ -36,17 +38,17 @@ final class VideoObjectBuilder
      *     '@type': string,
      *     name: string,
      *     description: string,
-     *     thumbnailUrl: array{0: string},
      *     uploadDate: string,
      *     embedUrl: string,
      *     interactionStatistic: array{'@type': string, interactionType: string, userInteractionCount: int},
+     *     thumbnailUrl?: array{0: string},
      *     duration?: string
      * }
      */
     public static function build(
         string $name,
         string $description,
-        string $thumbnail_url,
+        ?string $thumbnail_url,
         string $upload_date,
         ?string $duration,
         string $embed_url,
@@ -57,7 +59,6 @@ final class VideoObjectBuilder
             '@type'                => 'VideoObject',
             'name'                 => $name,
             'description'          => $description,
-            'thumbnailUrl'         => [$thumbnail_url],
             'uploadDate'           => $upload_date,
             'embedUrl'             => $embed_url,
             'interactionStatistic' => [
@@ -66,6 +67,10 @@ final class VideoObjectBuilder
                 'userInteractionCount' => $view_count,
             ],
         ];
+
+        if (null !== $thumbnail_url) {
+            $video_object['thumbnailUrl'] = [$thumbnail_url];
+        }
 
         if (null !== $duration) {
             $video_object['duration'] = $duration;

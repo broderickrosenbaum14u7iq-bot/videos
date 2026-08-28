@@ -11,9 +11,10 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-const TUBE_THEME_VERSION = '1.1.0';
+const TUBE_THEME_VERSION = '1.3.0';
 
 require_once __DIR__ . '/inc/template-functions.php';
+require_once __DIR__ . '/inc/customizer.php';
 
 /**
  * Theme setup. Deliberately does NOT add `title-tag` support:
@@ -27,6 +28,22 @@ add_action(
     static function (): void {
         add_theme_support('post-thumbnails');
         add_theme_support('html5', ['search-form', 'script', 'style']);
+        // 2026-08-28: header brand logo switcher -- native Customizer
+        // Logo control under Site Identity (`get_theme_mod('custom_logo')`),
+        // not a bespoke raw-URL field. `flex-height`/`flex-width` let an
+        // admin upload any real logo aspect ratio; `tube_theme_render_site_brand()`
+        // (inc/template-functions.php) is what actually caps the rendered
+        // <img> size in the header slot via CSS max-height/max-width.
+        add_theme_support(
+            'custom-logo',
+            [
+                'height'      => 40,
+                'width'       => 200,
+                'flex-height' => true,
+                'flex-width'  => true,
+            ]
+        );
+        tube_theme_register_footer_menus();
     }
 );
 
@@ -37,14 +54,14 @@ add_action(
             'tube-theme',
             get_stylesheet_directory_uri() . '/assets/css/tube-theme.css',
             [],
-            TUBE_THEME_VERSION
+            tube_theme_asset_version('assets/css/tube-theme.css')
         );
 
         wp_enqueue_script(
             'tube-theme',
             get_stylesheet_directory_uri() . '/assets/js/tube-theme.js',
             [],
-            TUBE_THEME_VERSION,
+            tube_theme_asset_version('assets/js/tube-theme.js'),
             true
         );
 

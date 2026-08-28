@@ -31,7 +31,7 @@ get_template_part(
     null,
     [
         'videos'        => $tube_theme_videos,
-        'empty_message' => __('No trending videos yet.', 'tube-theme'),
+        'empty_message' => __('Chưa có video thịnh hành nào.', 'tube-theme'),
     ]
 );
 ?>

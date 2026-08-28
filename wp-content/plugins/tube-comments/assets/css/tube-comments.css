@@ -1,0 +1,543 @@
+/**
+ * Tube Comments — comment section, Phases 11/15/23/24/35/36.
+ *
+ * Reuses tube-theme.css's `:root` tokens via var(--x, fallback), the
+ * same posture tube-members.css already documents.
+ */
+
+.tube-comments {
+	max-width: 100%;
+	overflow-x: hidden;
+}
+
+.tube-comments__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 12px;
+	margin-bottom: 16px;
+}
+
+.tube-comments__title {
+	margin: 0;
+}
+
+.tube-comments__sort {
+	display: flex;
+	gap: 6px;
+}
+
+.tube-comments__sort-btn {
+	/* 2026-08-27 pill-regression fix: this was the one real, pre-existing
+	   999px capsule radius found live during that task's audit -- never
+	   touched by the earlier comment-pagination work, just never caught
+	   until this pass. 6px matches the same compact system every other
+	   chip/button in this project now uses. */
+	height: 32px;
+	padding: 0 14px;
+	border-radius: 6px;
+	border: 1px solid var(--color-border-strong, #333c4f);
+	background: transparent;
+	color: var(--color-text-muted, #9aa2b1);
+	font-size: 13px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.tube-comments__sort-btn:hover:not(.is-active) {
+	color: var(--color-text, #e8eaed);
+	border-color: var(--color-text-muted, #9aa2b1);
+}
+
+.tube-comments__sort-btn:focus-visible {
+	outline: 2px solid var(--color-accent, #ff3d5a);
+	outline-offset: 2px;
+}
+
+.tube-comments__sort-btn.is-active {
+	background: var(--color-surface-elevated, #1c2230);
+	color: var(--color-text, #e8eaed);
+	border-color: var(--color-text, #e8eaed);
+}
+
+.tube-comments__composer {
+	display: flex;
+	gap: 12px;
+	margin-bottom: 24px;
+}
+
+.tube-comments__composer-avatar {
+	width: 36px;
+	height: 36px;
+	border-radius: 50%;
+	object-fit: cover;
+	flex: none;
+}
+
+.tube-comments__composer-body {
+	flex: 1;
+	min-width: 0;
+}
+
+.tube-comments__composer-input,
+.tube-comments__reply-composer textarea,
+.tube-comments__edit-input {
+	width: 100%;
+	min-height: 36px;
+	padding: 8px 0;
+	background: transparent;
+	border: 0;
+	border-bottom: 1px solid var(--color-border-strong, #333c4f);
+	color: var(--color-text, #e8eaed);
+	font-size: 14px;
+	font-family: var(--font-sans);
+	resize: none;
+	box-sizing: border-box;
+}
+
+.tube-comments__composer-input:focus,
+.tube-comments__reply-composer textarea:focus,
+.tube-comments__edit-input:focus {
+	outline: none;
+	border-bottom-color: var(--color-accent, #ff3d5a);
+}
+
+.tube-comments__composer-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+/* Shown instead of the textarea/actions once the viewer has already
+   used up their one root comment on this video (Phase "frontend
+   blocked-state UX") -- toggled by tube-comments.js reading
+   `viewer_root_comment_status` from the server, never inferred from
+   localStorage alone. */
+.tube-comments__composer-blocked {
+	margin: 0;
+	padding: 8px 0;
+	color: var(--color-text-muted, #9aa2b1);
+	font-size: 13px;
+}
+
+/* A transient inline error for a failed comment/reply submission
+   (anti-spam block, validation failure) -- appended next to whichever
+   composer the attempt came from, removed automatically after a few
+   seconds. */
+.tube-comments__composer-error {
+	margin: 6px 0 0;
+	color: var(--color-accent, #ff3d5a);
+	font-size: 13px;
+}
+
+/* Email-verification-required notice (2026-08-27) -- shown in place of
+   the root composer, appended to a reply's own holder, or inside a
+   small modal for report (see tube-comments.js's buildVerificationNotice()/
+   openVerificationDialog()). */
+.tube-comments__verify-notice {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	padding: 8px 0;
+	color: var(--color-text-muted, #9aa2b1);
+	font-size: 13px;
+}
+
+.tube-comments__btn-primary,
+.tube-comments__btn-ghost {
+	height: 34px;
+	padding: 0 16px;
+	border-radius: var(--radius-full, 999px);
+	font-size: 13px;
+	font-weight: 700;
+	cursor: pointer;
+	border: 0;
+}
+
+.tube-comments__btn-primary {
+	background: var(--color-accent, #ff3d5a);
+	color: #fff;
+}
+
+.tube-comments__btn-ghost {
+	background: transparent;
+	color: var(--color-text-muted, #9aa2b1);
+}
+
+.tube-comments__list {
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+}
+
+.tube-comments__item {
+	display: flex;
+	gap: 12px;
+}
+
+.tube-comments__item--reply {
+	margin-top: 14px;
+}
+
+.tube-comments__replies-list {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+
+.tube-comments__replies {
+	margin: 10px 0 0 48px;
+	padding-left: 12px;
+	border-left: 2px solid var(--color-border, #262c3b);
+}
+
+.tube-comments__view-replies {
+	background: transparent;
+	border: 0;
+	color: var(--color-accent, #ff3d5a);
+	font-size: 13px;
+	font-weight: 700;
+	cursor: pointer;
+	padding: 4px 0;
+}
+
+.tube-comments__avatar {
+	width: 36px;
+	height: 36px;
+	border-radius: 50%;
+	object-fit: cover;
+	flex: none;
+}
+
+.tube-comments__body {
+	flex: 1;
+	min-width: 0;
+}
+
+.tube-comments__meta {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.tube-comments__author {
+	font-size: 13px;
+	font-weight: 700;
+	color: var(--color-text, #e8eaed);
+}
+
+.tube-comments__time {
+	font-size: 12px;
+	color: var(--color-text-faint, #6b7280);
+}
+
+.tube-comments__content {
+	margin: 4px 0 6px;
+	font-size: 14px;
+	line-height: 1.5;
+	color: var(--color-text, #e8eaed);
+	word-break: break-word;
+	overflow-wrap: anywhere;
+}
+
+.tube-comments__mention {
+	color: var(--color-accent, #ff3d5a);
+	font-weight: 600;
+}
+
+.tube-comments__timestamp {
+	display: inline;
+	background: transparent;
+	border: 0;
+	padding: 0;
+	color: var(--color-accent, #ff3d5a);
+	font-weight: 700;
+	cursor: pointer;
+	font-size: inherit;
+	font-family: inherit;
+}
+
+.tube-comments__timestamp:hover {
+	text-decoration: underline;
+}
+
+.tube-comments__content a {
+	color: var(--color-accent-hover, #ff5c74);
+	word-break: break-all;
+}
+
+.tube-comments__actions {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+}
+
+.tube-comments__action-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	background: transparent;
+	border: 0;
+	color: var(--color-text-muted, #9aa2b1);
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+	padding: 4px 0;
+}
+
+.tube-comments__action-btn svg {
+	width: 16px;
+	height: 16px;
+}
+
+.tube-comments__like-btn.is-active {
+	color: var(--color-accent, #ff3d5a);
+}
+
+.tube-comments__menu-wrap {
+	position: relative;
+	margin-left: auto;
+}
+
+.tube-comments__menu-btn {
+	font-size: 16px;
+	line-height: 1;
+}
+
+.tube-comments__menu {
+	position: absolute;
+	right: 0;
+	top: 100%;
+	min-width: 160px;
+	background: var(--color-surface-elevated, #1c2230);
+	border: 1px solid var(--color-border, #262c3b);
+	border-radius: var(--radius-md, 8px);
+	box-shadow: var(--shadow-elevated, 0 8px 24px rgba(0, 0, 0, 0.45));
+	padding: 6px;
+	z-index: 5;
+}
+
+.tube-comments__menu-item {
+	display: block;
+	width: 100%;
+	text-align: left;
+	padding: 8px 10px;
+	border: 0;
+	background: transparent;
+	color: var(--color-text, #e8eaed);
+	font-size: 13px;
+	border-radius: var(--radius-sm, 4px);
+	cursor: pointer;
+}
+
+.tube-comments__menu-item:hover {
+	background: var(--color-surface-hover, #202737);
+}
+
+.tube-comments__deleted-text {
+	color: var(--color-text-faint, #6b7280);
+	font-style: italic;
+	font-size: 13px;
+	margin: 0;
+}
+
+.tube-comments__reply-composer {
+	display: flex;
+	gap: 8px;
+	align-items: flex-end;
+	margin: 12px 0 0 48px;
+}
+
+.tube-comments__reply-composer textarea {
+	flex: 1;
+}
+
+.tube-comments__edit-input {
+	display: block;
+	margin-bottom: 8px;
+}
+
+.tube-comments__empty {
+	color: var(--color-text-muted, #9aa2b1);
+	font-size: 14px;
+	text-align: center;
+	padding: 24px 0;
+}
+
+.tube-comments__skeleton-row {
+	height: 48px;
+	margin-bottom: 12px;
+	border-radius: var(--radius-md, 8px);
+	background: linear-gradient(
+		90deg,
+		var(--color-surface-elevated, #1c2230) 25%,
+		var(--color-surface-hover, #202737) 37%,
+		var(--color-surface-elevated, #1c2230) 63%
+	);
+	background-size: 400% 100%;
+	animation: tube-comments-shimmer 1.4s ease infinite;
+}
+
+@keyframes tube-comments-shimmer {
+	0% {
+		background-position: 100% 50%;
+	}
+
+	100% {
+		background-position: 0 50%;
+	}
+}
+
+.tube-comments__load-more {
+	display: block;
+	margin: 20px auto 0;
+	height: 38px;
+	padding: 0 20px;
+	border-radius: var(--radius-full, 999px);
+	border: 1px solid var(--color-border-strong, #333c4f);
+	background: transparent;
+	color: var(--color-text, #e8eaed);
+	font-size: 13px;
+	font-weight: 700;
+	cursor: pointer;
+	transition: background-color 150ms ease, border-color 150ms ease, opacity 150ms ease;
+}
+
+.tube-comments__load-more:hover:not(:disabled) {
+	background: rgba(255, 255, 255, 0.06);
+	border-color: var(--color-text-muted, #9aa2b1);
+}
+
+.tube-comments__load-more:focus-visible {
+	outline: 2px solid var(--color-accent, #ff3d5a);
+	outline-offset: 2px;
+}
+
+/* Loading state (2026-08-27, "Đang tải..."): disabled, not just visually
+   dimmed -- the same click-guard the JS's own isLoadingPage flag already
+   enforces, doubled here so a keyboard/assistive-tech user also sees a
+   real disabled control rather than one that merely looks busy. */
+.tube-comments__load-more:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+
+/* ---- Report dialog -------------------------------------------------- */
+
+.tube-comments__report-dialog {
+	position: fixed;
+	inset: 0;
+	z-index: 130;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: var(--color-scrim, rgba(11, 14, 20, 0.85));
+	padding: 16px;
+}
+
+.tube-comments__report-panel {
+	width: 100%;
+	max-width: 320px;
+	background: var(--color-surface, #131722);
+	border: 1px solid var(--color-border, #262c3b);
+	border-radius: var(--radius-lg, 16px);
+	padding: 20px;
+}
+
+.tube-comments__report-panel h3 {
+	margin: 0 0 12px;
+	font-size: 16px;
+	color: var(--color-text, #e8eaed);
+}
+
+.tube-comments__report-option {
+	display: block;
+	padding: 8px 0;
+	font-size: 14px;
+	color: var(--color-text, #e8eaed);
+}
+
+.tube-comments__report-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 14px;
+}
+
+/* ---- "Bình luận của tôi" (account page) ------------------------------ */
+
+.tube-comments-mine__row {
+	padding: 12px 0;
+	border-bottom: 1px solid var(--color-border, #262c3b);
+}
+
+.tube-comments-mine__video {
+	display: block;
+	font-size: 13px;
+	font-weight: 700;
+	color: var(--color-accent, #ff3d5a);
+	text-decoration: none;
+	margin-bottom: 4px;
+}
+
+.tube-comments-mine__content {
+	margin: 0 0 4px;
+	font-size: 14px;
+	color: var(--color-text, #e8eaed);
+}
+
+.tube-comments-mine__meta {
+	font-size: 12px;
+	color: var(--color-text-faint, #6b7280);
+}
+
+/* ---- Mobile (Phase 35, widened 2026-08-27 compact-mobile pass from
+   ≤480 to ≤768 -- these were already correct compressions for a phone,
+   just scoped narrower than this task's ≤768px target): compact
+   avatars, small indentation, no overflow, plus the new density
+   reductions below (list gap, header/composer spacing, timestamp size)
+   the compact-mobile pass added on top. `.tube-comments__title` reuses
+   `.section-heading` from tube-theme.css (own class list:
+   "section-heading tube-comments__title") -- that shared selector's own
+   ≤768px override already covers this section's heading size, nothing
+   comments-specific needed for it. */
+
+@media (max-width: 768px) {
+	.tube-comments__avatar,
+	.tube-comments__composer-avatar {
+		width: 30px;
+		height: 30px;
+	}
+
+	.tube-comments__replies,
+	.tube-comments__reply-composer {
+		margin-left: 24px;
+	}
+
+	.tube-comments__actions {
+		gap: 12px;
+	}
+
+	.tube-comments__header {
+		align-items: flex-start;
+		margin-bottom: 12px;
+	}
+
+	.tube-comments__composer {
+		gap: 10px;
+		margin-bottom: 18px;
+	}
+
+	.tube-comments__list {
+		gap: 16px;
+	}
+
+	.tube-comments__time {
+		font-size: 11px;
+	}
+}

@@ -80,9 +80,13 @@ interface DiscoveryRepositoryInterface
     public function recently_added(int $limit): array;
 
     /**
-     * Full-text search against `title`/`description`, per
-     * ARCHITECTURE.md §5's `tube_search_query()` — a MySQL `FULLTEXT`
-     * query against `search_text_idx`, ordered by relevance.
+     * Full-text search, per ARCHITECTURE.md §5's `tube_search_query()` —
+     * a MySQL `FULLTEXT` query against `search_text_normalized_idx`
+     * (accent-folded, lowercased title+description —
+     * `Tube_Search\Search\TextNormalizer::normalize()`), ordered by
+     * relevance. `$query` is normalized through the exact same pipeline
+     * before matching — implementations must not match against raw
+     * `title`/`description`.
      *
      * @param string $query  The raw search query text.
      * @param int    $limit  Maximum number of rows to return.

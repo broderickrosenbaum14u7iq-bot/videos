@@ -141,4 +141,75 @@ final class InMemoryVideoStatisticsRepository implements VideoStatisticsReposito
     {
         return $this->count_all_to_return;
     }
+
+    /**
+     * Each video's current likes_total, keyed by video ID.
+     *
+     * @var array<int, int>
+     */
+    public array $likes_totals = [];
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int $video_id The video post ID.
+     */
+    public function likes_total(int $video_id): int
+    {
+        return $this->likes_totals[ $video_id ] ?? 0;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int $video_id The video post ID.
+     */
+    public function increment_likes(int $video_id): void
+    {
+        $this->likes_totals[ $video_id ] = ($this->likes_totals[ $video_id ] ?? 0) + 1;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int $video_id The video post ID.
+     */
+    public function decrement_likes(int $video_id): void
+    {
+        $this->likes_totals[ $video_id ] = max(0, ($this->likes_totals[ $video_id ] ?? 0) - 1);
+    }
+
+    /**
+     * Every ensure_baseline() call this fake received, in order.
+     *
+     * @var list<array{video_id: int, baseline: int}>
+     */
+    public array $ensure_baseline_calls = [];
+
+    /**
+     * Video IDs this fake should report as already having a row (so a
+     * test can distinguish "seeded" from "already existed, untouched").
+     *
+     * @var int[]
+     */
+    public array $existing_video_ids = [];
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int $video_id The video post ID.
+     * @param int $baseline The `views_total` to seed a brand-new row with.
+     */
+    public function ensure_baseline(int $video_id, int $baseline): void
+    {
+        $this->ensure_baseline_calls[] = [
+            'video_id' => $video_id,
+            'baseline' => $baseline,
+        ];
+
+        if (! in_array($video_id, $this->existing_video_ids, true)) {
+            $this->existing_video_ids[]          = $video_id;
+            $this->totals_to_return[ $video_id ] = $baseline;
+        }
+    }
 }

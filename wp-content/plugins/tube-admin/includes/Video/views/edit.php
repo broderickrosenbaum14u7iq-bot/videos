@@ -50,15 +50,46 @@ $tube_admin_back_url = remove_query_arg(['video_id', 'saved']);
         </div>
     <?php endif; ?>
 
+    <?php
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only display of a redirect result.
+    $tube_admin_error = sanitize_key(wp_unslash(\Tube_Admin\Support\Request::string($_GET, 'error')));
+    ?>
+    <?php if ('no_stream_uid_yet' === $tube_admin_error) : ?>
+        <div class="notice notice-error is-dismissible">
+            <p>
+                <?php esc_html_e('This video has no Cloudflare Stream UID yet, so nothing was saved.', 'tube-admin'); ?>
+            </p>
+        </div>
+    <?php endif; ?>
+
     <?php if (null === $metadata) : ?>
         <div class="notice notice-warning">
-            <p><?php esc_html_e('This video has no Cloudflare Stream metadata yet.', 'tube-admin'); ?></p>
+            <p>
+                <?php
+                printf(
+                    /* translators: %s: link to the video's own Edit Video screen. */
+                    esc_html__('No Cloudflare Stream UID yet. Set it on its own %s first.', 'tube-admin'),
+                    null === $tube_admin_post_edit_url
+                        ? esc_html__('Edit Video', 'tube-admin')
+                        : '<a href="' . esc_url($tube_admin_post_edit_url) . '">'
+                            . esc_html__('Edit Video', 'tube-admin') . '</a>'
+                );
+                ?>
+            </p>
         </div>
     <?php else : ?>
         <table class="form-table" role="presentation">
             <tr>
                 <th scope="row"><?php esc_html_e('Cloudflare Stream UID', 'tube-admin'); ?></th>
-                <td><code><?php echo esc_html($metadata->cf_stream_uid); ?></code></td>
+                <td>
+                    <code><?php echo esc_html($metadata->cf_stream_uid); ?></code>
+                    <?php if (null !== $tube_admin_post_edit_url) : ?>
+                        &nbsp;
+                        <a href="<?php echo esc_url($tube_admin_post_edit_url); ?>">
+                            <?php esc_html_e('Change it on the Edit Video screen', 'tube-admin'); ?>
+                        </a>
+                    <?php endif; ?>
+                </td>
             </tr>
             <tr>
                 <th scope="row"><?php esc_html_e('Encoding Status', 'tube-admin'); ?></th>
@@ -76,13 +107,36 @@ $tube_admin_back_url = remove_query_arg(['video_id', 'saved']);
                     <?php endif; ?>
                 </td>
             </tr>
+            <tr>
+                <th scope="row"><?php esc_html_e('Poster Image', 'tube-admin'); ?></th>
+                <td>
+                    <?php
+                    $tube_admin_poster_preview_url = null === $metadata->poster_image_id
+                        ? false
+                        : wp_get_attachment_image_url($metadata->poster_image_id, 'medium');
+                    ?>
+                    <?php if (is_string($tube_admin_poster_preview_url)) : ?>
+                        <img
+                            src="<?php echo esc_url($tube_admin_poster_preview_url); ?>"
+                            style="max-width:200px;height:auto;display:block;margin-bottom:8px;"
+                            alt=""
+                        />
+                    <?php else : ?>
+                        <?php esc_html_e('None set.', 'tube-admin'); ?>
+                    <?php endif; ?>
+                    <?php if (null !== $tube_admin_post_edit_url) : ?>
+                        <a href="<?php echo esc_url($tube_admin_post_edit_url); ?>">
+                            <?php esc_html_e('Change it on the Edit Video screen', 'tube-admin'); ?>
+                        </a>
+                    <?php endif; ?>
+                </td>
+            </tr>
         </table>
     <?php endif; ?>
 
     <form
         method="post"
         action="<?php echo esc_url(admin_url('admin-post.php')); ?>"
-        enctype="multipart/form-data"
     >
         <input type="hidden" name="action" value="tube_admin_save_video_details" />
         <?php $tube_admin_video_id_str = strval($video_id); ?>
@@ -109,67 +163,31 @@ $tube_admin_back_url = remove_query_arg(['video_id', 'saved']);
                         value="<?php echo esc_attr($tube_admin_thumbnail_time_str); ?>"
                     />
                     <p class="description">
-                        <?php esc_html_e('The frame offset the default poster is extracted from.', 'tube-admin'); ?>
+                        <?php
+                        esc_html_e(
+                            'Currently unused: there is no Cloudflare Stream thumbnail extraction anymore (ADR-0001) — retained only in case a future feature needs it.', // phpcs:ignore Generic.Files.LineLength.TooLong -- a single translatable string literal (WordPress.WP.I18n.NonSingularStringLiteralText forbids splitting it via concatenation).
+                            'tube-admin'
+                        );
+                        ?>
                     </p>
                 </td>
             </tr>
             <tr>
-                <th scope="row">
-                    <label for="tube-admin-poster-image">
-                        <?php esc_html_e('Custom Poster Image', 'tube-admin'); ?>
-                    </label>
-                </th>
+                <th scope="row"><?php esc_html_e('OG (Share) Image', 'tube-admin'); ?></th>
                 <td>
-                    <?php $tube_admin_poster_id = null === $metadata ? null : $metadata->poster_image_id; ?>
-                    <?php if (null !== $tube_admin_poster_id) : ?>
-                        <?php $tube_admin_poster_id_str = strval($tube_admin_poster_id); ?>
-                        <p>
-                            <?php
-                            printf(
-                                /* translators: %s: Cloudflare Images ID. */
-                                esc_html__('Current override: Cloudflare Images ID %s', 'tube-admin'),
-                                esc_html($tube_admin_poster_id_str)
-                            );
-                            ?>
-                        </p>
-                        <label>
-                            <input type="checkbox" name="remove_poster_image" value="1" />
-                            <?php esc_html_e('Remove and revert to the default Stream thumbnail', 'tube-admin'); ?>
-                        </label>
-                        <br />
-                    <?php endif; ?>
-                    <input type="file" id="tube-admin-poster-image" name="poster_image" accept="image/*" />
+                    <?php
+                    $tube_admin_field_name  = 'og_image_id';
+                    $tube_admin_field_value = null === $metadata ? null : $metadata->og_image_id;
+                    require __DIR__ . '/media-picker.php';
+                    ?>
                     <p class="description">
-                        <?php esc_html_e('Uploads to Cloudflare Images.', 'tube-admin'); ?>
+                        <?php
+                        esc_html_e(
+                            'Used for social-share previews (og:image). Leave empty to omit it — there is no automatic fallback to the poster image.', // phpcs:ignore Generic.Files.LineLength.TooLong -- a single translatable string literal (WordPress.WP.I18n.NonSingularStringLiteralText forbids splitting it via concatenation).
+                            'tube-admin'
+                        );
+                        ?>
                     </p>
-                </td>
-            </tr>
-            <tr>
-                <th scope="row">
-                    <label for="tube-admin-og-image">
-                        <?php esc_html_e('Custom OG Image', 'tube-admin'); ?>
-                    </label>
-                </th>
-                <td>
-                    <?php $tube_admin_og_id = null === $metadata ? null : $metadata->og_image_id; ?>
-                    <?php if (null !== $tube_admin_og_id) : ?>
-                        <?php $tube_admin_og_id_str = strval($tube_admin_og_id); ?>
-                        <p>
-                            <?php
-                            printf(
-                                /* translators: %s: Cloudflare Images ID. */
-                                esc_html__('Current override: Cloudflare Images ID %s', 'tube-admin'),
-                                esc_html($tube_admin_og_id_str)
-                            );
-                            ?>
-                        </p>
-                        <label>
-                            <input type="checkbox" name="remove_og_image" value="1" />
-                            <?php esc_html_e('Remove and revert to the default OG image', 'tube-admin'); ?>
-                        </label>
-                        <br />
-                    <?php endif; ?>
-                    <input type="file" id="tube-admin-og-image" name="og_image" accept="image/*" />
                 </td>
             </tr>
             <tr>

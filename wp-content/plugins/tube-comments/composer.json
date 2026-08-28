@@ -1,0 +1,24 @@
+{
+    "name": "phimtoico/tube-comments",
+    "description": "Tube Comments: video comments, replies, comment likes, reports, moderation. Depends on tube-core and tube-members at runtime only, not at the Composer level.",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": ">=8.3",
+        "predis/predis": "^2.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "Tube_Comments\\": "includes/",
+            "Tube_Comments\\SchemaMigrations\\": "migrations/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tube_Comments\\Tests\\": "tests/"
+        }
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6 || ^10.5"
+    }
+}

@@ -34,7 +34,7 @@ if ($tube_theme_term instanceof WP_Term) {
         [
             'items' => [
                 [
-                    'name' => __('Home', 'tube-theme'),
+                    'name' => __('Trang chủ', 'tube-theme'),
                     'url'  => home_url('/'),
                 ],
                 [
@@ -56,7 +56,7 @@ if ($tube_theme_term instanceof WP_Term) {
             'page_url'      => static fn (int $tube_theme_target_page): string => $tube_theme_target_page > 1
                 ? trailingslashit($tube_theme_base_url) . 'page/' . $tube_theme_target_page . '/'
                 : $tube_theme_base_url,
-            'empty_message' => __('No videos found in this category yet.', 'tube-theme'),
+            'empty_message' => __('Chưa có video nào trong danh mục này.', 'tube-theme'),
         ]
     );
 }

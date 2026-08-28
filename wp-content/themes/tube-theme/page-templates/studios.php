@@ -34,7 +34,7 @@ $tube_theme_base_url  = false === $tube_theme_permalink ? home_url('/') : $tube_
         <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 12a5 5 0 100-10 5 5 0 000 10zM4 22a8 8 0 0116 0z" />
         </svg>
-        <p><?php esc_html_e('No studios yet.', 'tube-theme'); ?></p>
+        <p><?php esc_html_e('Chưa có hãng phim nào.', 'tube-theme'); ?></p>
     </div>
 <?php else : ?>
     <div class="profile-directory">

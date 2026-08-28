@@ -18,11 +18,15 @@ use Tube_Player\Video\VideoProviderInterface;
  *
  * The markup is entirely server-rendered, including the embed URL
  * itself (in `data-embed-url`) — the small client-side script
- * (`assets/js/tube-player.js`) only ever swaps the poster for an
- * `<iframe>` using that pre-computed attribute, never fetches anything
- * (this phase's "avoid unnecessary REST requests" instruction). The
- * outer wrapper reserves its aspect ratio via CSS `aspect-ratio` before
- * any image loads — zero CLS by construction, not by measurement.
+ * (`assets/js/tube-player.js`) swaps the poster for an `<iframe>` using
+ * that pre-computed attribute; no URL-construction logic lives in that
+ * script for either purpose. Since 2026-08-25 it also fires one
+ * fire-and-forget `POST` to `data-view-url` (also pre-built here, never
+ * assembled client-side) the first time a real visitor activates the
+ * player — the view-recording call site `Tube_Core\Views\ViewController`'s
+ * own docblock describes as long "deferred." The outer wrapper reserves
+ * its aspect ratio via CSS `aspect-ratio` before any image loads — zero
+ * CLS by construction, not by measurement.
  *
  * Keyboard access needs no dedicated handling: the play control is a
  * native `<button>`, which is Tab-focusable and fires `click` on both
@@ -56,26 +60,27 @@ final class PlayerHtmlRenderer
     /**
      * Render one click-to-load player block.
      *
+     * @param int                        $video_id The video post ID — embedded only as `data-view-url`
+     *     (a pre-built, server-rendered REST URL), the same "no URL-construction logic in client-side JS"
+     *     posture `data-embed-url` already established; never sent anywhere else by this class.
      * @param string                     $cf_stream_uid Cloudflare Stream UID.
-     * @param int                        $thumbnail_time_seconds Default-thumbnail extraction offset, in seconds.
-     * @param int|null                   $override_poster_image_id Cloudflare Images ID overriding the default, if set.
+     * @param int|null                   $override_poster_image_id WP attachment ID to use as the poster (ADR-0001).
      * @param array<string, bool|string> $args `title`/`aspect_ratio`/`class` (string), `eager` (bool). All optional.
      */
     public function render(
+        int $video_id,
         string $cf_stream_uid,
-        int $thumbnail_time_seconds,
         ?int $override_poster_image_id,
         array $args = []
     ): string {
         $embed_url    = $this->stream_provider->embed_url($cf_stream_uid);
+        $view_url     = rest_url('tube/v1/videos/' . $video_id . '/view');
         $title        = self::string_arg($args, 'title', '');
         $eager        = self::bool_arg($args, 'eager', false);
         $aspect_ratio = self::string_arg($args, 'aspect_ratio', self::DEFAULT_ASPECT_RATIO);
         $class        = trim('tube-player ' . self::string_arg($args, 'class', ''));
 
         $poster_html = $this->image_renderer->render(
-            $cf_stream_uid,
-            $thumbnail_time_seconds,
             $override_poster_image_id,
             ImageSize::Hero,
             [
@@ -86,7 +91,8 @@ final class PlayerHtmlRenderer
         );
 
         return sprintf(
-            '<div class="%1$s" style="aspect-ratio:%2$s" data-tube-player data-embed-url="%3$s" data-title="%7$s">'
+            '<div class="%1$s" style="aspect-ratio:%2$s" data-tube-player data-embed-url="%3$s"'
+                . ' data-view-url="%8$s" data-title="%7$s">'
                 . '%4$s'
                 . '<button type="button" class="tube-player__play" aria-label="%5$s">'
                 . '<svg class="tube-player__play-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
@@ -100,7 +106,8 @@ final class PlayerHtmlRenderer
             $poster_html,
             esc_attr($this->play_label($title)),
             esc_html($this->watch_label($title)),
-            esc_attr('' === $title ? __('Video player', 'tube-player') : $title)
+            esc_attr('' === $title ? __('Video player', 'tube-player') : $title),
+            esc_url($view_url)
         );
     }
 

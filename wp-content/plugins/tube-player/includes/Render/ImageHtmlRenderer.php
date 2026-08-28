@@ -9,60 +9,56 @@ declare(strict_types=1);
 
 namespace Tube_Player\Render;
 
-use Tube_Player\Video\Cloudflare\CloudflareImagesUrlBuilder;
 use Tube_Player\Video\ImageSize;
-use Tube_Player\Video\VideoProviderInterface;
 
 /**
  * Builds the poster/thumbnail `<img>` tag behind `tube_player_get_image_html()`
- * (ARCHITECTURE.md §5/§8) — explicit `width`/`height` (zero CLS), a 1x/2x
- * `srcset` from Cloudflare's own resizing (no local intermediate sizes,
- * per §8), and `loading`/`fetchpriority` controlled by the caller, since
- * only the theme (Phase 8) knows whether a given instance is above the
- * fold (ARCHITECTURE.md §5 — the theme stays presentation-only, this
- * class stays the one place the actual markup is built).
+ * (ARCHITECTURE.md §5/§8) — explicit `width`/`height` (zero CLS), a
+ * `srcset` of WordPress's own attachment-derivative candidates, and
+ * `loading`/`fetchpriority` controlled by the caller, since only the
+ * theme (Phase 8) knows whether a given instance is above the fold
+ * (ARCHITECTURE.md §5 — the theme stays presentation-only, this class
+ * stays the one place the actual markup is built).
+ *
+ * The WordPress Media Library poster/OG-image attachment is the only
+ * image source (ADR-0001, refined by its 2026-08-25 addendum): there is
+ * no Cloudflare Stream thumbnail default/fallback anywhere in this
+ * class. A video with no attachment set (or a stale/deleted attachment
+ * ID) renders no `<img>` at all — `self::render()` returns `''`, and the
+ * theme's own container styling (a neutral background, per
+ * `ImageSize`'s aspect-ratio box) is the empty state, not a
+ * Cloudflare-generated image.
  *
  * A plain `<img src>` (no `<picture>`/`<source>`) is deliberate, not a
- * missing feature: Cloudflare's `format=auto` content negotiation
- * already serves WebP/AVIF via the `Accept` header on a single URL, so a
- * `<picture>` element would only add markup without adding capability
- * (§8's "no format conversion... logic lives in WordPress at all").
+ * missing feature — WordPress's own attachment-derivative `srcset`
+ * already covers responsive delivery without a `<picture>` element.
  *
- * WordPress-coupled (`esc_url()`/`esc_attr()`) — verified via integration
- * tests and live checks, not unit-tested, the same split this project
- * applies to every thin real-output adapter.
+ * WordPress-coupled (`esc_url()`/`esc_attr()`/`wp_get_attachment_image_url()`/
+ * `wp_get_attachment_image_srcset()`) — verified via integration tests
+ * and live checks, not unit-tested, the same split this project applies
+ * to every thin real-output adapter.
  */
 final class ImageHtmlRenderer
 {
     /**
-     * Construct around the collaborators that resolve an image's URL(s).
-     *
-     * @param VideoProviderInterface          $stream_provider    The default (Cloudflare Stream thumbnail) source.
-     * @param CloudflareImagesUrlBuilder|null $images_url_builder The poster-override source, or null if not configured.
-     */
-    public function __construct(
-        private readonly VideoProviderInterface $stream_provider,
-        private readonly ?CloudflareImagesUrlBuilder $images_url_builder
-    ) {
-    }
-
-    /**
      * Render one `<img>` tag.
      *
-     * @param string                     $cf_stream_uid Cloudflare Stream UID.
-     * @param int                        $thumbnail_time_seconds Default-thumbnail extraction offset, in seconds.
-     * @param int|null                   $override_image_id Cloudflare Images ID overriding the default, if set.
+     * @param int|null                   $override_image_id WP attachment ID to render (ADR-0001).
      * @param ImageSize                  $size Which size preset to render.
      * @param array<string, bool|string> $args `eager` (bool), `fetchpriority`/`alt`/`class` (string). All optional.
+     *
+     * @return string The `<img>` tag, or '' if `$override_image_id` is null or doesn't resolve to a real attachment.
      */
     public function render(
-        string $cf_stream_uid,
-        int $thumbnail_time_seconds,
         ?int $override_image_id,
         ImageSize $size,
         array $args = []
     ): string {
-        $urls = $this->resolve_urls($cf_stream_uid, $thumbnail_time_seconds, $override_image_id, $size);
+        $urls = $this->resolve_urls($override_image_id, $size);
+
+        if (null === $urls['src']) {
+            return '';
+        }
 
         $eager         = self::bool_arg($args, 'eager', false);
         $loading       = $eager ? 'eager' : 'lazy';
@@ -87,47 +83,46 @@ final class ImageHtmlRenderer
     }
 
     /**
-     * Resolve the `src` and, when available, the `srcset` for one image.
+     * Resolve the `src` and, when available, the `srcset` for one image —
+     * WordPress Media Library only (ADR-0001, refined by its 2026-08-25
+     * addendum).
      *
-     * @param string    $cf_stream_uid          The Cloudflare Stream UID.
-     * @param int       $thumbnail_time_seconds Default-thumbnail extraction offset, in seconds.
-     * @param int|null  $override_image_id      A Cloudflare Images ID overriding the default, if set.
-     * @param ImageSize $size                   Which size preset to render.
+     * Public so `tube-seo`'s `SeoHead`/`SitemapGenerator`/`VideoObjectBuilder`
+     * callers (which need a bare URL, not a full `<img>` tag, for a
+     * `<meta>` tag/JSON-LD/XML sitemap entry) can resolve the same image
+     * this renderer's own `render()` uses, instead of each hand-rolling
+     * its own copy of the resolution logic.
      *
-     * @return array{src: string, srcset: string|null}
+     * @param int|null  $override_image_id A WordPress attachment ID, or null (ADR-0001).
+     * @param ImageSize $size              Which size preset to resolve.
+     *
+     * @return array{src: string|null, srcset: string|null} `src` is null when `$override_image_id` is null or
+     *     doesn't resolve to a real attachment (e.g. it was deleted) — there is no other image source to fall
+     *     back to.
      */
-    private function resolve_urls(
-        string $cf_stream_uid,
-        int $thumbnail_time_seconds,
-        ?int $override_image_id,
-        ImageSize $size
-    ): array {
-        if (null !== $override_image_id && null !== $this->images_url_builder) {
-            // A Cloudflare Images variant is a fixed, pre-configured
-            // size — there is no client-selectable 2x request the way
-            // Stream's thumbnail endpoint offers, so no srcset here.
+    public function resolve_urls(?int $override_image_id, ImageSize $size): array
+    {
+        if (null === $override_image_id) {
             return [
-                'src'    => $this->images_url_builder->url($override_image_id, $size->value),
+                'src'    => null,
                 'srcset' => null,
             ];
         }
 
-        $src    = $this->stream_provider->thumbnail_url(
-            $cf_stream_uid,
-            $thumbnail_time_seconds,
-            $size->width(),
-            $size->height()
-        );
-        $src_2x = $this->stream_provider->thumbnail_url(
-            $cf_stream_uid,
-            $thumbnail_time_seconds,
-            $size->width() * 2,
-            $size->height() * 2
-        );
+        $attachment_src = wp_get_attachment_image_url($override_image_id, [$size->width(), $size->height()]);
+
+        if (false === $attachment_src) {
+            return [
+                'src'    => null,
+                'srcset' => null,
+            ];
+        }
+
+        $srcset = wp_get_attachment_image_srcset($override_image_id, [$size->width(), $size->height()]);
 
         return [
-            'src'    => $src,
-            'srcset' => "{$src} 1x, {$src_2x} 2x",
+            'src'    => $attachment_src,
+            'srcset' => is_string($srcset) ? $srcset : null,
         ];
     }
 

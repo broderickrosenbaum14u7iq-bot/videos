@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/bootstrap.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache">
+    <!--
+        Unit suite only, same posture as tube-core's own phpunit.xml.dist:
+        pure-logic tests (or tests against a handful of stubbed WordPress
+        functions — see tests/bootstrap.php) with no live database and no
+        full WordPress bootstrap. CommentService/CommentRepository (both
+        hard-wired to $wpdb, with no repository interface to swap a fake
+        behind, unlike tube-core's Likes/Saves architecture) are exercised
+        instead via this session's own live, real-browser + real-database
+        end-to-end verification (create/reply/edit/delete/like/report,
+        XSS injection, one-level reply flattening) — see the final report.
+    -->
+    <testsuites>
+        <testsuite name="unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory suffix=".php">includes</directory>
+        </include>
+    </source>
+</phpunit>

@@ -96,4 +96,45 @@ abstract class AbstractMigration implements MigrationInterface
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table/index identifiers only, derived from $wpdb->prefix and this migration's own literal index names, never user input; identifiers cannot be bound via wpdb::prepare().
         $this->db()->query("ALTER TABLE {$table_name} DROP INDEX {$index_name}");
     }
+
+    /**
+     * Rename a column in place, preserving its data and type.
+     *
+     * Used from up()/down() methods that need to repurpose an existing
+     * column's name (e.g. parking a superseded column under a new name
+     * rather than dropping its data — see `Migration010SeparateLegacyCloudflareImageIds`).
+     * Like drop_table()/drop_index(), dbDelta() has no equivalent — it
+     * only ever adds what's missing when diffing a CREATE TABLE
+     * statement, it never renames, so this is a direct query by
+     * necessity. Requires MySQL 8.0+/MariaDB 10.5+'s `RENAME COLUMN`
+     * syntax (this project targets MariaDB 11.4, ARCHITECTURE.md §11).
+     *
+     * @param string $table_name Full table name, including the site's table prefix.
+     * @param string $from       The column's current name.
+     * @param string $to         The column's new name.
+     */
+    protected function rename_column(string $table_name, string $from, string $to): void
+    {
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.SchemaChange -- schema change; no dbDelta/WP_Query equivalent exists for renaming a column. See ARCHITECTURE.md §2.5, §3, §11.
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table/column identifiers only, derived from $wpdb->prefix and this migration's own literal column names, never user input; identifiers cannot be bound via wpdb::prepare().
+        $this->db()->query("ALTER TABLE {$table_name} RENAME COLUMN {$from} TO {$to}");
+    }
+
+    /**
+     * Drop a single column from a table.
+     *
+     * Used from down() methods that reverse a column-add change dbDelta()
+     * applied in up() — dbDelta() adds columns but never removes them, so
+     * removing one is a direct query by necessity, the same reasoning as
+     * drop_table()/drop_index().
+     *
+     * @param string $table_name  Full table name, including the site's table prefix.
+     * @param string $column_name The column to drop.
+     */
+    protected function drop_column(string $table_name, string $column_name): void
+    {
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.SchemaChange -- schema change; no dbDelta/WP_Query equivalent exists for dropping a column. See ARCHITECTURE.md §2.5, §3, §11.
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table/column identifiers only, derived from $wpdb->prefix and this migration's own literal column names, never user input; identifiers cannot be bound via wpdb::prepare().
+        $this->db()->query("ALTER TABLE {$table_name} DROP COLUMN {$column_name}");
+    }
 }

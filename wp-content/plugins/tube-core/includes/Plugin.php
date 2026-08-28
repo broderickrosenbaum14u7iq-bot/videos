@@ -12,6 +12,7 @@ namespace Tube_Core;
 use Predis\Client;
 use Tube_Core\CLI\ImportCommand;
 use Tube_Core\CLI\MigrateCommand;
+use Tube_Core\CLI\StreamCommand;
 use Tube_Core\CLI\ViewsCommand;
 use Tube_Core\CLI\WatchHistoryCommand;
 use Tube_Core\Content\Actor;
@@ -25,12 +26,17 @@ use Tube_Core\Content\Studio;
 use Tube_Core\Content\TagTaxonomy;
 use Tube_Core\Content\VideoPostType;
 use Tube_Core\Database\SchemaVersionStore;
+use Tube_Core\Engagement\GuestMergeService;
 use Tube_Core\Events\Dispatcher;
 use Tube_Core\Events\VideoLifecycleEvents;
 use Tube_Core\Events\WordPressHookBus;
 use Tube_Core\Import\BatchProcessor;
 use Tube_Core\Import\Repositories\ImportQueueRepository;
 use Tube_Core\Import\VideoImporter;
+use Tube_Core\Likes\LikeController;
+use Tube_Core\Likes\LikeToggleService;
+use Tube_Core\Likes\Repositories\LikeRepository;
+use Tube_Core\Likes\Repositories\LikeRepositoryInterface;
 use Tube_Core\Migration\MigrationRunner;
 use Tube_Core\SchemaMigrations\Migration001CreateVideoMetadataTable;
 use Tube_Core\SchemaMigrations\Migration002CreateActorTables;
@@ -41,9 +47,21 @@ use Tube_Core\SchemaMigrations\Migration006CreateVideoStatisticsTable;
 use Tube_Core\SchemaMigrations\Migration007CreateImportQueueTable;
 use Tube_Core\SchemaMigrations\Migration008CreateWatchHistoryTable;
 use Tube_Core\SchemaMigrations\Migration009AddVideoStatisticsWindowIndexes;
+use Tube_Core\SchemaMigrations\Migration010SeparateLegacyCloudflareImageIds;
+use Tube_Core\SchemaMigrations\Migration011CreateVideoLikesTable;
+use Tube_Core\SchemaMigrations\Migration012AddLikesTotalToVideoStatistics;
+use Tube_Core\SchemaMigrations\Migration013CreateSavedVideosTable;
+use Tube_Core\Saves\Repositories\SavedVideoRepository;
+use Tube_Core\Saves\Repositories\SavedVideoRepositoryInterface;
+use Tube_Core\Saves\SaveController;
+use Tube_Core\Saves\SaveToggleService;
+use Tube_Core\Stream\CloudflareStreamDetailsFetcher;
+use Tube_Core\Stream\StreamDetailsProviderInterface;
+use Tube_Core\Stream\StreamMetadataSyncer;
 use Tube_Core\Stream\StreamStatusUpdater;
 use Tube_Core\Stream\WebhookController;
 use Tube_Core\Stream\WebhookSignatureVerifier;
+use Tube_Core\Support\RedisRateLimiter;
 use Tube_Core\Video\Repositories\VideoMetadataRepository;
 use Tube_Core\Video\Repositories\VideoMetadataRepositoryInterface;
 use Tube_Core\Views\RedisViewCounter;
@@ -52,6 +70,8 @@ use Tube_Core\Views\Repositories\VideoStatisticsRepositoryInterface;
 use Tube_Core\Views\Repositories\VideoViewsRepository;
 use Tube_Core\Views\Retention;
 use Tube_Core\Views\StatsRollup;
+use Tube_Core\Views\ViewBaselineSubscriber;
+use Tube_Core\Views\ViewController;
 use Tube_Core\Views\ViewCounterInterface;
 use Tube_Core\Views\ViewRecorder;
 use Tube_Core\Views\ViewsFlusher;
@@ -117,6 +137,20 @@ final class Plugin
     private ?VideoMetadataRepositoryInterface $video_metadata_repository = null;
 
     /**
+     * Lazily created by self::stream_details_provider().
+     *
+     * @var StreamDetailsProviderInterface|null
+     */
+    private ?StreamDetailsProviderInterface $stream_details_provider = null;
+
+    /**
+     * Lazily created by self::stream_metadata_syncer().
+     *
+     * @var StreamMetadataSyncer|null
+     */
+    private ?StreamMetadataSyncer $stream_metadata_syncer = null;
+
+    /**
      * Lazily created by self::video_statistics_repository().
      *
      * @var VideoStatisticsRepositoryInterface|null
@@ -136,6 +170,27 @@ final class Plugin
      * @var StudioRepositoryInterface|null
      */
     private ?StudioRepositoryInterface $studio_repository = null;
+
+    /**
+     * Lazily created by self::like_repository().
+     *
+     * @var LikeRepositoryInterface|null
+     */
+    private ?LikeRepositoryInterface $like_repository = null;
+
+    /**
+     * Lazily created by self::saved_video_repository().
+     *
+     * @var SavedVideoRepositoryInterface|null
+     */
+    private ?SavedVideoRepositoryInterface $saved_video_repository = null;
+
+    /**
+     * Lazily created by self::rate_limiter().
+     *
+     * @var RedisRateLimiter|null
+     */
+    private ?RedisRateLimiter $rate_limiter = null;
 
     /**
      * Private: use self::instance() instead.
@@ -190,6 +245,7 @@ final class Plugin
         add_filter('template_include', [$studio_routing, 'route_template']);
 
         (new VideoLifecycleEvents($this->events()))->register();
+        (new ViewBaselineSubscriber($this->video_statistics_repository()))->register();
 
         add_action('rest_api_init', [$this, 'register_rest_routes']);
 
@@ -260,6 +316,10 @@ final class Plugin
                     Migration007CreateImportQueueTable::class,
                     Migration008CreateWatchHistoryTable::class,
                     Migration009AddVideoStatisticsWindowIndexes::class,
+                    Migration010SeparateLegacyCloudflareImageIds::class,
+                    Migration011CreateVideoLikesTable::class,
+                    Migration012AddLikesTotalToVideoStatistics::class,
+                    Migration013CreateSavedVideosTable::class,
                 ]
             );
         }
@@ -285,40 +345,68 @@ final class Plugin
     }
 
     /**
+     * A Predis client against this environment's configured Redis —
+     * shared by self::view_counter() and self::rate_limiter(), the two
+     * real consumers that justify re-extracting this (ARCHITECTURE.md's
+     * "extract a shared accessor only once 2+ real consumers exist"
+     * rule — a single Predis client per request is enough; there is no
+     * reason for self::view_counter() and self::rate_limiter() to each
+     * open their own connection).
+     */
+    private function redis_client(): Client
+    {
+        $host = defined('TUBE_CORE_REDIS_HOST') ? TUBE_CORE_REDIS_HOST : '127.0.0.1';
+        $port = defined('TUBE_CORE_REDIS_PORT') ? TUBE_CORE_REDIS_PORT : 6379;
+
+        return new Client(
+            [
+                'host' => $host,
+                'port' => $port,
+            ]
+        );
+    }
+
+    /**
      * The Redis-buffered view counter, per ARCHITECTURE.md §12 Phase 4.
      *
      * Not exposed to other plugins the way self::events()/
      * self::migration_runner() are — nothing outside tube-core needs to
      * touch the buffer directly; self::view_recorder() is the public
-     * entry point a future consumer (a REST controller, tube-player)
-     * calls instead.
+     * entry point `Tube_Core\Views\ViewController` calls instead.
      */
     private function view_counter(): ViewCounterInterface
     {
         if (null === $this->view_counter) {
-            $host = defined('TUBE_CORE_REDIS_HOST') ? TUBE_CORE_REDIS_HOST : '127.0.0.1';
-            $port = defined('TUBE_CORE_REDIS_PORT') ? TUBE_CORE_REDIS_PORT : 6379;
-
-            $this->view_counter = new RedisViewCounter(
-                new Client(
-                    [
-                        'host' => $host,
-                        'port' => $port,
-                    ]
-                )
-            );
+            $this->view_counter = new RedisViewCounter($this->redis_client());
         }
 
         return $this->view_counter;
     }
 
     /**
+     * The Redis-backed rate limiter `Tube_Core\Likes\LikeController`/
+     * `Tube_Core\Saves\SaveController` use to bound how often one viewer
+     * may toggle a like/save, per the mobile watch-page redesign's "rate
+     * limiting where appropriate" requirement. Not exposed publicly —
+     * only this plugin's own REST route registration constructs
+     * controllers that need it.
+     */
+    private function rate_limiter(): RedisRateLimiter
+    {
+        if (null === $this->rate_limiter) {
+            $this->rate_limiter = new RedisRateLimiter($this->redis_client());
+        }
+
+        return $this->rate_limiter;
+    }
+
+    /**
      * Records a view (buffers it, dispatches VIDEO_VIEW_RECORDED), per
      * ARCHITECTURE.md §12 Phase 4.
      *
-     * Public so a future consumer (a REST controller, tube-player) can
-     * call `Plugin::instance()->view_recorder()->record($video_id)` —
-     * the same "public accessor for a cross-cutting concern" shape as
+     * Public so `Tube_Core\Views\ViewController` can call
+     * `Plugin::instance()->view_recorder()->record($video_id)` — the
+     * same "public accessor for a cross-cutting concern" shape as
      * self::events()/self::migration_runner().
      */
     public function view_recorder(): ViewRecorder
@@ -347,6 +435,60 @@ final class Plugin
         }
 
         return $this->video_metadata_repository;
+    }
+
+    /**
+     * The live Cloudflare Stream details lookup (status/duration by UID)
+     * — the pull-based counterpart to the webhook's push, per
+     * `StreamDetailsProviderInterface`'s own docblock.
+     *
+     * Public so `self::stream_metadata_syncer()`'s construction is
+     * visible here at the composition root, and so tests/future
+     * consumers can swap it.
+     */
+    public function stream_details_provider(): StreamDetailsProviderInterface
+    {
+        if (null === $this->stream_details_provider) {
+            $account_id = defined('TUBE_CORE_CLOUDFLARE_STREAM_ACCOUNT_ID')
+                && is_string(TUBE_CORE_CLOUDFLARE_STREAM_ACCOUNT_ID)
+                ? TUBE_CORE_CLOUDFLARE_STREAM_ACCOUNT_ID
+                : '';
+            $api_token  = defined('TUBE_CORE_CLOUDFLARE_STREAM_API_TOKEN')
+                && is_string(TUBE_CORE_CLOUDFLARE_STREAM_API_TOKEN)
+                ? TUBE_CORE_CLOUDFLARE_STREAM_API_TOKEN
+                : '';
+
+            $this->stream_details_provider = new CloudflareStreamDetailsFetcher($account_id, $api_token);
+        }
+
+        return $this->stream_details_provider;
+    }
+
+    /**
+     * The Cloudflare Stream status/duration synchronizer.
+     *
+     * Public: `Tube_Admin\Video\StreamUidMetaBox` calls this after a
+     * manually-entered Stream UID is created/changed, so a video never
+     * needs an actual webhook delivery (which only ever fires for videos
+     * this project's own import pipeline uploaded) to get a real
+     * duration. Composes its own `StreamStatusUpdater` — the same class
+     * the webhook path uses — rather than writing to
+     * `video_metadata_repository()` directly, specifically so a
+     * successful sync also dispatches `EventCatalog::VIDEO_STREAM_STATUS_CHANGED`
+     * (tube-search's index sync, tube-cache's purge subscriber) exactly
+     * as a webhook-driven update already does; see `StreamMetadataSyncer`'s
+     * own docblock.
+     */
+    public function stream_metadata_syncer(): StreamMetadataSyncer
+    {
+        if (null === $this->stream_metadata_syncer) {
+            $this->stream_metadata_syncer = new StreamMetadataSyncer(
+                $this->stream_details_provider(),
+                new StreamStatusUpdater($this->video_metadata_repository(), $this->events())
+            );
+        }
+
+        return $this->stream_metadata_syncer;
     }
 
     /**
@@ -400,6 +542,61 @@ final class Plugin
     }
 
     /**
+     * The like-rows repository, per the mobile watch-page redesign's
+     * real Like system.
+     *
+     * Public: `includes/template-tags.php`'s `tube_core_has_liked()`
+     * calls `self::has_liked()` here directly to resolve a video's
+     * initial "already liked" state at page-render time — the same
+     * "public accessor for a cross-cutting concern" shape as
+     * self::video_metadata_repository().
+     */
+    public function like_repository(): LikeRepositoryInterface
+    {
+        if (null === $this->like_repository) {
+            $this->like_repository = new LikeRepository();
+        }
+
+        return $this->like_repository;
+    }
+
+    /**
+     * The saved-video-rows ("Watch Later") repository. Public for the
+     * same reason as self::like_repository() —
+     * `tube_core_has_saved()` reads it directly.
+     */
+    public function saved_video_repository(): SavedVideoRepositoryInterface
+    {
+        if (null === $this->saved_video_repository) {
+            $this->saved_video_repository = new SavedVideoRepository();
+        }
+
+        return $this->saved_video_repository;
+    }
+
+    /**
+     * Merge a guest visitor token's likes/saves into a newly-
+     * authenticated member's own likes/saves, per the member system's
+     * Phase 26/27. Public so `tube-members` can call this exactly once,
+     * immediately after a successful login/registration/Google sign-in
+     * — the same "public accessor for a cross-cutting concern" shape as
+     * self::like_repository()/self::saved_video_repository(), now
+     * exercised by tube-members as the first real cross-plugin *write*
+     * consumer (tube-search's own cross-plugin calls are read-only).
+     *
+     * @param string $visitor_token The guest's `tube_visitor` cookie value being merged away.
+     * @param int    $user_id       The member account absorbing the guest's engagement.
+     */
+    public function merge_guest_engagement_into_user(string $visitor_token, int $user_id): void
+    {
+        (new GuestMergeService(
+            $this->like_repository(),
+            $this->saved_video_repository(),
+            $this->video_statistics_repository()
+        ))->merge($visitor_token, $user_id);
+    }
+
+    /**
      * Register `tube/v1` REST routes. Called on `rest_api_init`.
      *
      * Public only because WordPress's hook mechanism requires it (the
@@ -438,13 +635,58 @@ final class Plugin
                 'permission_callback' => '__return_true',
             ]
         );
+
+        $view_controller = new ViewController($this->view_recorder());
+
+        register_rest_route(
+            'tube/v1',
+            '/videos/(?P<id>\d+)/view',
+            [
+                'methods'             => 'POST',
+                'callback'            => [$view_controller, 'handle'],
+                'permission_callback' => '__return_true',
+            ]
+        );
+
+        $like_controller = new LikeController(
+            new LikeToggleService($this->like_repository(), $this->video_statistics_repository()),
+            new VisitorToken(),
+            $this->rate_limiter()
+        );
+
+        register_rest_route(
+            'tube/v1',
+            '/videos/(?P<id>\d+)/like',
+            [
+                'methods'             => 'POST',
+                'callback'            => [$like_controller, 'handle'],
+                'permission_callback' => '__return_true',
+            ]
+        );
+
+        $save_controller = new SaveController(
+            new SaveToggleService($this->saved_video_repository()),
+            new VisitorToken(),
+            $this->rate_limiter()
+        );
+
+        register_rest_route(
+            'tube/v1',
+            '/videos/(?P<id>\d+)/save',
+            [
+                'methods'             => 'POST',
+                'callback'            => [$save_controller, 'handle'],
+                'permission_callback' => '__return_true',
+            ]
+        );
     }
 
     /**
      * Register `wp tube migrate`, `wp tube-core views:flush`/
-     * `stats:rollup`/`views:partition-maintenance`,
+     * `stats:rollup`/`views:partition-maintenance`/`views:seed-baseline`,
      * `wp tube-core import:enqueue`/`import:process`/`import:status`,
-     * and `wp tube-core watch-history:purge` when running under WP-CLI.
+     * `wp tube-core watch-history:purge`, and `wp tube-core stream:resync`
+     * when running under WP-CLI.
      */
     private function register_cli_commands(): void
     {
@@ -459,15 +701,17 @@ final class Plugin
         $views_command = new ViewsCommand(
             new ViewsFlusher($this->view_counter(), $views_repository, $this->video_statistics_repository()),
             new StatsRollup($views_repository, $this->video_statistics_repository(), $this->events()),
-            new Retention($views_repository)
+            new Retention($views_repository),
+            $this->video_statistics_repository()
         );
 
-        // Registered as three individually-named commands, not one class
-        // with WP-CLI's usual space-separated subcommands — see
-        // ViewsCommand's own docblock for why.
+        // Registered as individually-named commands, not one class with
+        // WP-CLI's usual space-separated subcommands — see ViewsCommand's
+        // own docblock for why.
         WP_CLI::add_command('tube-core views:flush', [$views_command, 'flush']);
         WP_CLI::add_command('tube-core stats:rollup', [$views_command, 'rollup']);
         WP_CLI::add_command('tube-core views:partition-maintenance', [$views_command, 'partition_maintenance']);
+        WP_CLI::add_command('tube-core views:seed-baseline', [$views_command, 'seed_baseline']);
 
         $queue_repository = new ImportQueueRepository();
 
@@ -487,5 +731,9 @@ final class Plugin
         $watch_history_command = new WatchHistoryCommand(new GuestHistoryRetention(new WatchHistoryRepository()));
 
         WP_CLI::add_command('tube-core watch-history:purge', [$watch_history_command, 'purge']);
+
+        $stream_command = new StreamCommand($this->video_metadata_repository(), $this->stream_metadata_syncer());
+
+        WP_CLI::add_command('tube-core stream:resync', [$stream_command, 'resync']);
     }
 }

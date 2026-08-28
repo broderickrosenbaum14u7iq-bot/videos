@@ -115,9 +115,18 @@ final class StreamStatusUpdaterTest extends TestCase
     }
 
     /**
-     * The same status with a newly-known duration is still written, but not announced.
+     * The same status with a newly-known duration is written AND
+     * announced — even though the status itself didn't change. This is
+     * the exact case a batch resync of already-`Ready` videos (backfilling
+     * a duration that was never fetched before) hits: without the
+     * dispatch here, `Tube_Search\Events\SearchIndexSyncSubscriber`/
+     * `Tube_Cache\Events\CachePurgeSubscriber` (both listen only for
+     * `VIDEO_STREAM_STATUS_CHANGED`, not a bare "duration changed" signal)
+     * would never resync `wp_tube_search_index`/purge cache, and the
+     * correct canonical `duration_seconds` would silently never reach the
+     * homepage/category/search cards.
      */
-    public function test_same_status_with_new_duration_is_written_but_not_announced(): void
+    public function test_same_status_with_a_newly_known_duration_is_written_and_announced(): void
     {
         $this->metadata_repository->seed('uid-1', 42, CfStreamStatus::Processing);
 
@@ -133,7 +142,69 @@ final class StreamStatusUpdaterTest extends TestCase
             ],
             $this->metadata_repository->update_status_calls
         );
+        self::assertSame(
+            [
+                [
+                    'hook'    => EventCatalog::VIDEO_STREAM_STATUS_CHANGED,
+                    'payload' => [
+                        'video_id' => 42,
+                        'status'   => 'processing',
+                    ],
+                ],
+            ],
+            $this->hook_bus->dispatched
+        );
+    }
+
+    /**
+     * The same status with the exact same already-known duration reported
+     * again (e.g. an admin re-running a resync on an already-fully-synced
+     * video) changes nothing and announces nothing — genuinely idempotent,
+     * not just "duration happens to not be null."
+     */
+    public function test_same_status_with_the_same_already_known_duration_is_a_safe_no_op(): void
+    {
+        $this->metadata_repository->seed('uid-1', 42, CfStreamStatus::Processing, 120);
+
+        $this->updater->handle('uid-1', CfStreamStatus::Processing, 120);
+
+        self::assertSame([], $this->metadata_repository->update_status_calls);
         self::assertSame([], $this->hook_bus->dispatched);
+    }
+
+    /**
+     * The same status with a *different* already-known duration (the
+     * Cloudflare-reported value changed since the last sync) is written
+     * and announced.
+     */
+    public function test_same_status_with_a_changed_duration_is_written_and_announced(): void
+    {
+        $this->metadata_repository->seed('uid-1', 42, CfStreamStatus::Processing, 90);
+
+        $this->updater->handle('uid-1', CfStreamStatus::Processing, 120);
+
+        self::assertSame(
+            [
+                [
+                    'video_id'         => 42,
+                    'status'           => CfStreamStatus::Processing,
+                    'duration_seconds' => 120,
+                ],
+            ],
+            $this->metadata_repository->update_status_calls
+        );
+        self::assertSame(
+            [
+                [
+                    'hook'    => EventCatalog::VIDEO_STREAM_STATUS_CHANGED,
+                    'payload' => [
+                        'video_id' => 42,
+                        'status'   => 'processing',
+                    ],
+                ],
+            ],
+            $this->hook_bus->dispatched
+        );
     }
 
     /**

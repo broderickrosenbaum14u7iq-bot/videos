@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace Tube_Seo;
 
+use Tube_Seo\Admin\HomepageSeoSettings;
 use Tube_Seo\CLI\SitemapCommand;
 use Tube_Seo\Head\SeoHead;
 use Tube_Seo\Sitemap\PublishedVideoRepository;
@@ -89,6 +90,48 @@ final class Plugin
         // and exit()ing on a real match sidesteps that entirely.
         add_action('template_redirect', [$routing, 'maybe_serve'], 1);
 
+        // WordPress core's own rel_canonical() (wp-includes/default-filters.php,
+        // registered before plugins_loaded, so it's already on the hook by the
+        // time this runs) fires on every is_singular() request and would emit a
+        // second <link rel="canonical"> alongside SeoHead's own — SeoHead
+        // already renders a real, correct canonical for every page type this
+        // site has (video/archive/search/home), so core's is pure duplication
+        // everywhere it would ever fire here (2026-08-26 SEO audit finding, P0).
+        remove_action('wp_head', 'rel_canonical');
+
+        // WordPress core's native sitemap system auto-discovers the `video`
+        // post type (publicly_queryable + show_in_rest) and lists every
+        // published video in /wp-sitemap-posts-video-*.xml with only generic
+        // <loc>/<lastmod> fields — a second, competing, always-in-sync-by-
+        // definition sitemap for the exact same URLs this plugin's own
+        // richer video-specific sitemap (<video:thumbnail_loc>, <video:
+        // duration>, etc.) already covers. Excluding just `video` here
+        // leaves core's sitemap fully intact for any other post type
+        // (2026-08-26 SEO audit finding, P0).
+        add_filter('wp_sitemaps_post_types', [self::class, 'exclude_video_from_core_sitemap']);
+
+        // robots.txt's own `Sitemap:` directive (WP_Sitemaps::add_robots(),
+        // hooked at priority 0) only ever points at core's generic sitemap
+        // above — crawlers relying on that directive would never discover
+        // this plugin's actual video sitemap. Priority 20 (after core's 0)
+        // appends a second line rather than replacing core's, since core's
+        // own sitemap is still valid for whatever isn't `video`.
+        add_filter('robots_txt', [self::class, 'add_video_sitemap_to_robots_txt'], 20, 2);
+
+        // REST API responses (/wp-json/...) have no HTML <head> for a meta
+        // robots tag to live in, and this site's REST routes exist for its
+        // own front-end JS, not as public content — nothing else on this
+        // site sends an X-Robots-Tag header at all (2026-08-26 SEO audit
+        // P1 finding), so this is additive, not a duplicate/conflict risk.
+        add_filter('rest_pre_serve_request', [self::class, 'add_rest_x_robots_tag_header']);
+
+        // "Tube SEO -> Homepage SEO" — admin_menu/admin_init only ever run
+        // in wp-admin, so this costs nothing on a real front-end request.
+        $homepage_seo_settings = new HomepageSeoSettings();
+
+        add_action('admin_menu', [$homepage_seo_settings, 'register_menu']);
+        add_action('admin_init', [$homepage_seo_settings, 'register_settings']);
+
         $this->register_cli_commands();
     }
 
@@ -135,6 +178,52 @@ final class Plugin
         }
 
         return $this->sitemap_generator;
+    }
+
+    /**
+     * Remove `video` from WordPress core's native sitemap post-type list —
+     * see self::boot()'s docblock comment for why.
+     *
+     * @param array<string, \WP_Post_Type> $post_types Registered post type objects, keyed by name.
+     *
+     * @return array<string, \WP_Post_Type>
+     */
+    public static function exclude_video_from_core_sitemap(array $post_types): array
+    {
+        unset($post_types['video']);
+
+        return $post_types;
+    }
+
+    /**
+     * Append this plugin's own video sitemap to robots.txt's `Sitemap:`
+     * directive(s) — see self::boot()'s docblock comment for why.
+     *
+     * @param string $output    The robots.txt output so far.
+     * @param bool   $is_public Whether `blog_public` allows indexing.
+     */
+    public static function add_video_sitemap_to_robots_txt(string $output, bool $is_public): string
+    {
+        if (! $is_public) {
+            return $output;
+        }
+
+        return $output . "\nSitemap: " . esc_url(home_url('/video-sitemap.xml')) . "\n";
+    }
+
+    /**
+     * Send `X-Robots-Tag: noindex, nofollow` on every REST API response —
+     * see self::boot()'s docblock comment for why.
+     *
+     * @param bool $served Whether the request has already been served — passed through unchanged.
+     */
+    public static function add_rest_x_robots_tag_header(bool $served): bool
+    {
+        if (! headers_sent()) {
+            header('X-Robots-Tag: noindex, nofollow');
+        }
+
+        return $served;
     }
 
     /**

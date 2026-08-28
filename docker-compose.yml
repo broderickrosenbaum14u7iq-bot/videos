@@ -29,6 +29,17 @@ x-wordpress-env: &wordpress-env
   # Stream webhook signatures against. Fails closed if unset (every
   # request rejected) — see WebhookController::check_signature().
   #
+  # TUBE_CORE_CLOUDFLARE_STREAM_ACCOUNT_ID/API_TOKEN (added alongside
+  # ADR-0001's follow-up fix): a Stream:Read-scoped API token
+  # Tube_Core\Stream\CloudflareStreamDetailsFetcher uses to pull a video's
+  # live status/duration by UID — the counterpart to the webhook's push,
+  # used when a Cloudflare Stream UID is entered manually (Tube_Admin\Video\StreamUidMetaBox)
+  # rather than through this project's own import pipeline. Distinct from
+  # TUBE_PLAYER_CLOUDFLARE_STREAM_CUSTOMER_CODE below (delivery-URL
+  # subdomain only, cannot authenticate an API read). Leave both empty to
+  # leave this sync path unconfigured (fails closed, existing data never
+  # corrupted — see StreamMetadataSyncer's own docblock).
+  #
   # TUBE_PLAYER_* (Phase 6): Tube_Player\Plugin reads these to build
   # Cloudflare Stream/Images URLs at render time — never a stored
   # playback URL (ARCHITECTURE.md §2.1). Signed URLs are opt-in: leaving
@@ -37,20 +48,37 @@ x-wordpress-env: &wordpress-env
   # because a multi-line PEM cannot round-trip through a single-line
   # define() the way every other constant here does — decoded in
   # Tube_Player\Plugin::decoded_signing_key_pem(), never logged.
+  #
+  # WP_HOME/WP_SITEURL: local-dev-only, derived from whatever Host header
+  # the current request actually used (localhost:8080, the Mac's LAN IP,
+  # or any future DHCP-reassigned IP) instead of a fixed value baked into
+  # the `siteurl`/`home` DB options. A constant always wins over those
+  # options (WordPress core checks `defined('WP_HOME')`/`WP_SITEURL`
+  # before reading them), so every generated URL — asset enqueues, the
+  # REST base, canonical links, login/register redirects — matches
+  # whichever address (Mac browser or a phone on the same LAN) the
+  # request came in on, with no DB write ever needed again when the
+  # Mac's IP changes. Guarded by `isset($_SERVER['HTTP_HOST'])` because
+  # wp-cli/cron never have one (real HTTP requests always do), leaving
+  # WP-CLI's own `--url`/DB-option resolution untouched.
   WORDPRESS_CONFIG_EXTRA: |
+    if (isset($$_SERVER['HTTP_HOST'])) {
+        define('WP_HOME', 'http://' . $$_SERVER['HTTP_HOST']);
+        define('WP_SITEURL', 'http://' . $$_SERVER['HTTP_HOST']);
+    }
     define( 'DISABLE_WP_CRON', true );
     define( 'TUBE_CACHE_REDIS_HOST', '${REDIS_HOST:-redis}' );
     define( 'TUBE_CACHE_REDIS_PORT', ${REDIS_PORT:-6379} );
     define( 'TUBE_CORE_REDIS_HOST', '${REDIS_HOST:-redis}' );
     define( 'TUBE_CORE_REDIS_PORT', ${REDIS_PORT:-6379} );
     define( 'TUBE_CORE_CLOUDFLARE_STREAM_WEBHOOK_SECRET', '${CLOUDFLARE_STREAM_WEBHOOK_SECRET:-}' );
+    define( 'TUBE_CORE_CLOUDFLARE_STREAM_ACCOUNT_ID', '${CLOUDFLARE_STREAM_ACCOUNT_ID:-}' );
+    define( 'TUBE_CORE_CLOUDFLARE_STREAM_API_TOKEN', '${CLOUDFLARE_STREAM_API_TOKEN:-}' );
     define( 'TUBE_PLAYER_CLOUDFLARE_STREAM_CUSTOMER_CODE', '${CLOUDFLARE_STREAM_CUSTOMER_CODE:-}' );
     define( 'TUBE_PLAYER_CLOUDFLARE_STREAM_SIGNING_KEY_ID', '${CLOUDFLARE_STREAM_SIGNING_KEY_ID:-}' );
     define( 'TUBE_PLAYER_CLOUDFLARE_STREAM_SIGNING_KEY_PEM_BASE64', '${CLOUDFLARE_STREAM_SIGNING_KEY_PEM_BASE64:-}' );
     define( 'TUBE_PLAYER_SIGNED_URL_TTL_SECONDS', ${CLOUDFLARE_STREAM_SIGNED_URL_TTL_SECONDS:-3600} );
     define( 'TUBE_PLAYER_CLOUDFLARE_IMAGES_ACCOUNT_HASH', '${CLOUDFLARE_IMAGES_ACCOUNT_HASH:-}' );
-    define( 'TUBE_ADMIN_CLOUDFLARE_IMAGES_ACCOUNT_ID', '${CLOUDFLARE_IMAGES_ACCOUNT_ID:-}' );
-    define( 'TUBE_ADMIN_CLOUDFLARE_IMAGES_API_TOKEN', '${CLOUDFLARE_IMAGES_API_TOKEN:-}' );
 
 services:
   db:
@@ -93,6 +121,7 @@ services:
       - wp-core-data:/var/www/html
       - ./wp-content/plugins:/var/www/html/wp-content/plugins
       - ./wp-content/themes:/var/www/html/wp-content/themes
+      - ./ops/docker/php/uploads.ini:/usr/local/etc/php/conf.d/zz-uploads.ini:ro
 
   nginx:
     image: nginx:1.27-alpine
@@ -125,6 +154,7 @@ services:
       - ./wp-content/plugins:/var/www/html/wp-content/plugins
       - ./wp-content/themes:/var/www/html/wp-content/themes
       - ./ops/benchmark:/var/www/html/ops/benchmark:ro
+      - ./ops/docker/php/uploads.ini:/usr/local/etc/php/conf.d/zz-uploads.ini:ro
     entrypoint: ["tail", "-f", "/dev/null"]
 
   # Linux cron + WP-CLI sidecar. Never WP-Cron — see ARCHITECTURE.md §7 and

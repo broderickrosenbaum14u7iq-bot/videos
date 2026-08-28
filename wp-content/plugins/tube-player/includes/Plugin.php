@@ -128,9 +128,11 @@ final class Plugin
 
     /**
      * The Cloudflare Images URL builder, or null if no account hash is
-     * configured — meaning no video's `poster_image_id`/`og_image_id`
-     * can be honored yet (they fall back to the default Stream
-     * thumbnail; see `ImageHtmlRenderer::resolve_urls()`).
+     * configured. Since ADR-0001, this is used only by
+     * `self::profile_image_renderer()` (actor/studio photos, Phase 13 —
+     * explicitly out of scope for ADR-0001 and left on Cloudflare
+     * Images unchanged); video poster/OG-image overrides no longer use
+     * Cloudflare Images at all (see `ImageHtmlRenderer::resolve_urls()`).
      */
     public function images_url_builder(): ?CloudflareImagesUrlBuilder
     {
@@ -150,11 +152,19 @@ final class Plugin
      * The poster/thumbnail `<img>` renderer, per ARCHITECTURE.md §5/§8.
      *
      * Public: `includes/template-tags.php`'s `tube_player_get_image_html()` is a thin wrapper around this.
+     * Since ADR-0001 (refined by its 2026-08-25 addendum), the poster/
+     * OG-image is resolved via WordPress's own attachment functions
+     * (inside `ImageHtmlRenderer` itself) with no other source — it needs
+     * no collaborator, unlike `self::player_renderer()` below, which
+     * still needs `self::video_provider()` for the embed URL.
+     * `self::images_url_builder()` exists only for
+     * `self::profile_image_renderer()`'s unrelated actor/studio-photo
+     * use, which ADR-0001 explicitly left unchanged.
      */
     public function image_renderer(): ImageHtmlRenderer
     {
         if (null === $this->image_renderer) {
-            $this->image_renderer = new ImageHtmlRenderer($this->video_provider(), $this->images_url_builder());
+            $this->image_renderer = new ImageHtmlRenderer();
         }
 
         return $this->image_renderer;

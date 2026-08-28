@@ -62,6 +62,23 @@ final class VisitorToken
     }
 
     /**
+     * The current request's visitor token, without creating one —
+     * `null` if the visitor has no (or an invalid) `tube_visitor`
+     * cookie yet. For read-only "does this guest already have state"
+     * checks at page-render time (e.g. `tube_core_has_liked()`) that must
+     * never set a cookie on what is otherwise a plain, cacheable GET
+     * response — {@see self::get_or_create()} remains the only path that
+     * establishes a guest's identity, called only from the POST
+     * toggle/record endpoints that actually need one to exist.
+     */
+    public function current(): ?string
+    {
+        $existing = $_COOKIE[ self::COOKIE_NAME ] ?? null;
+
+        return is_string($existing) && $this->is_valid_token($existing) ? $existing : null;
+    }
+
+    /**
      * Whether a cookie value looks like a genuine UUID this class issued
      * — not a full validation of provenance, just a sanity check against
      * garbage/tampered cookie values before trusting it as a database key.

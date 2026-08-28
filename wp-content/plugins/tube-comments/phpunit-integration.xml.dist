@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/Integration/bootstrap.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache/integration">
+    <!--
+        Real-WordPress integration suite (see tests/Integration). Requires
+        a live WordPress + MySQL stack and must be run inside the wpcli
+        Docker container:
+
+            docker compose exec wpcli vendor/bin/phpunit -c phpunit-integration.xml.dist
+
+        Covers exactly the behaviors the plain Unit suite cannot (see
+        phpunit.xml.dist's own docblock): CommentRootLockRepository's
+        atomic acquire/expiry semantics against real MySQL/MariaDB (row-
+        level locking included, since the 20-parallel-request race test
+        spawns real child PHP processes), and SpamGuard's full rule set
+        end-to-end through CommentService::create() against real
+        WP_User accounts and real wp_tube_comments/wp_tube_comment_root_locks
+        rows.
+
+        Not run on the host, and not part of the plain `vendor/bin/phpunit`
+        (phpunit.xml.dist) unit suite.
+    -->
+    <testsuites>
+        <testsuite name="integration">
+            <directory>tests/Integration</directory>
+        </testsuite>
+    </testsuites>
+</phpunit>

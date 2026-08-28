@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace Tube_Core\Views\Repositories;
 
+use RuntimeException;
+
 /**
  * Data access for wp_tube_video_statistics (VideoStatisticsRepositoryInterface)
  * implementation. Direct $wpdb access is the same documented, intentional
@@ -207,6 +209,118 @@ final class VideoStatisticsRepository implements VideoStatisticsRepositoryInterf
         $count = $wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM %i', $wpdb->prefix . 'tube_video_statistics'));
 
         return null === $count ? 0 : (int) $count;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int $video_id The video post ID.
+     */
+    public function likes_total(int $video_id): int
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
+        $value = $wpdb->get_var(
+            $wpdb->prepare(
+                'SELECT likes_total FROM %i WHERE video_id = %d',
+                $wpdb->prefix . 'tube_video_statistics',
+                $video_id
+            )
+        );
+
+        return null === $value ? 0 : (int) $value;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int $video_id The video post ID.
+     *
+     * @throws RuntimeException If the query template is malformed (a bug in this method, not in any argument).
+     */
+    public function increment_likes(int $video_id): void
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        $sql = $wpdb->prepare(
+            'UPDATE %i SET likes_total = likes_total + 1, updated_at = %s WHERE video_id = %d',
+            $wpdb->prefix . 'tube_video_statistics',
+            current_time('mysql', true),
+            $video_id
+        );
+
+        if (null === $sql) {
+            throw new RuntimeException('wpdb::prepare() returned null in ' . __METHOD__ . '().');
+        }
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- dedicated custom table (§2.5, §11); $sql *is* $wpdb->prepare()'d above.
+        $wpdb->query($sql);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int $video_id The video post ID.
+     *
+     * @throws RuntimeException If the query template is malformed (a bug in this method, not in any argument).
+     */
+    public function decrement_likes(int $video_id): void
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        // GREATEST(..., 0) floors the counter at 0 -- likes_total can
+        // never go negative even if decrement_likes() were ever somehow
+        // called without a matching prior increment_likes().
+        $sql = $wpdb->prepare(
+            'UPDATE %i SET likes_total = GREATEST(likes_total - 1, 0), updated_at = %s WHERE video_id = %d',
+            $wpdb->prefix . 'tube_video_statistics',
+            current_time('mysql', true),
+            $video_id
+        );
+
+        if (null === $sql) {
+            throw new RuntimeException('wpdb::prepare() returned null in ' . __METHOD__ . '().');
+        }
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- dedicated custom table (§2.5, §11); $sql *is* $wpdb->prepare()'d above.
+        $wpdb->query($sql);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int $video_id The video post ID.
+     * @param int $baseline The `views_total` to seed a brand-new row with.
+     *
+     * @throws RuntimeException If the query template is malformed (a bug in this method, not in any argument).
+     */
+    public function ensure_baseline(int $video_id, int $baseline): void
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        $sql = $wpdb->prepare(
+            'INSERT INTO %i (video_id, views_total, views_today, views_7d, views_30d, updated_at)'
+                . ' VALUES (%d, %d, 0, 0, 0, %s)'
+                . ' ON DUPLICATE KEY UPDATE video_id = video_id',
+            $wpdb->prefix . 'tube_video_statistics',
+            $video_id,
+            $baseline,
+            current_time('mysql', true)
+        );
+
+        if (null === $sql) {
+            throw new RuntimeException(
+                'wpdb::prepare() returned null for the ensure_baseline() query in ' . self::class . '.'
+            );
+        }
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- dedicated custom table (§2.5, §11); $sql *is* $wpdb->prepare()'d above.
+        $wpdb->query($sql);
     }
 
     /**

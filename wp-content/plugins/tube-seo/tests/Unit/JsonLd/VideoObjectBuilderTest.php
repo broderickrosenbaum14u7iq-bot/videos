@@ -36,7 +36,8 @@ final class VideoObjectBuilderTest extends TestCase
         self::assertSame('VideoObject', $result['@type']);
         self::assertSame('My Video', $result['name']);
         self::assertSame('A description.', $result['description']);
-        self::assertSame(['https://example.com/thumb.jpg'], $result['thumbnailUrl']);
+        self::assertArrayHasKey('thumbnailUrl', $result);
+        self::assertSame(['https://example.com/thumb.jpg'], $result['thumbnailUrl'] ?? null);
         self::assertSame('2026-01-01T00:00:00+00:00', $result['uploadDate']);
         self::assertSame('https://example.com/embed/abc', $result['embedUrl']);
         self::assertArrayHasKey('duration', $result);
@@ -52,6 +53,18 @@ final class VideoObjectBuilderTest extends TestCase
         $result = VideoObjectBuilder::build('Title', 'Desc', 'https://x/y.jpg', '2026-01-01', null, 'https://x/e', 0);
 
         self::assertArrayNotHasKey('duration', $result);
+    }
+
+    /**
+     * A null thumbnail URL (no WordPress Media Library poster/OG image
+     * set, ADR-0001's 2026-08-25 addendum) omits the thumbnailUrl field
+     * entirely, rather than emitting a fabricated empty-string URL.
+     */
+    public function test_null_thumbnail_url_omits_the_thumbnail_url_field(): void
+    {
+        $result = VideoObjectBuilder::build('Title', 'Desc', null, '2026-01-01', null, 'https://x/e', 0);
+
+        self::assertArrayNotHasKey('thumbnailUrl', $result);
     }
 
     /**

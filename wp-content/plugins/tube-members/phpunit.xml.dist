@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/bootstrap.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache">
+    <!--
+        Unit suite only, same posture as tube-core's own phpunit.xml.dist:
+        pure-logic tests (or tests against a handful of stubbed WordPress
+        functions — see tests/bootstrap.php) with no live database and no
+        full WordPress bootstrap. Classes that call wp_insert_user(),
+        wp_authenticate(), wp_set_auth_cookie(), or Redis are exercised
+        instead via this session's own live, real-browser + real-database
+        end-to-end verification (registration, login, wp-admin blocking,
+        Google OAuth scaffolding, avatar upload) — see the final report.
+    -->
+    <testsuites>
+        <testsuite name="unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory suffix=".php">includes</directory>
+        </include>
+    </source>
+</phpunit>

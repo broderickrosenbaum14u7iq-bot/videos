@@ -35,6 +35,14 @@ final class SitemapGeneratorIntegrationTest extends TestCase
     private array $created_video_ids = [];
 
     /**
+     * Attachment posts created by a test (via self::create_ready_video()'s default OG-image
+     * attachment or a test's own self::create_test_attachment() call), cleaned up in tearDown().
+     *
+     * @var int[]
+     */
+    private array $created_attachment_ids = [];
+
+    /**
      * Reset the generator's own state and remove any files it wrote, so each test starts clean.
      */
     protected function setUp(): void
@@ -44,7 +52,7 @@ final class SitemapGeneratorIntegrationTest extends TestCase
     }
 
     /**
-     * Delete every video post created by the test, and this run's generated state/files.
+     * Delete every video/attachment post created by the test, and this run's generated state/files.
      */
     protected function tearDown(): void
     {
@@ -52,7 +60,12 @@ final class SitemapGeneratorIntegrationTest extends TestCase
             wp_delete_post($video_id, true);
         }
 
-        $this->created_video_ids = [];
+        foreach ($this->created_attachment_ids as $attachment_id) {
+            wp_delete_attachment($attachment_id, true);
+        }
+
+        $this->created_video_ids      = [];
+        $this->created_attachment_ids = [];
 
         delete_option('tube_seo_sitemap_state');
         $this->delete_generated_files();
@@ -70,7 +83,13 @@ final class SitemapGeneratorIntegrationTest extends TestCase
 
         self::assertTrue($result->regenerated);
         self::assertSame(1, $result->shard_count);
-        self::assertSame(2, $result->video_count);
+        // >=, not ===: this suite runs against the real site database
+        // (tests/Integration/bootstrap.php), and the 2026-08-26 SEO audit
+        // P0 fix (poster_image_id fallback) means real, ambient published
+        // videos now legitimately qualify for inclusion too — this test
+        // only cares that its own 2 videos are present (checked by title
+        // below), not the total.
+        self::assertGreaterThanOrEqual(2, $result->video_count);
 
         $path = trailingslashit(SitemapGenerator::directory()) . 'video-sitemap.xml';
         self::assertFileExists($path);
@@ -78,7 +97,7 @@ final class SitemapGeneratorIntegrationTest extends TestCase
         // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- reading this test's own locally-generated file, not a remote URL.
         $contents = (string) file_get_contents($path);
         $xpath    = $this->xpath($contents);
-        self::assertSame(2, $this->node_count($xpath, '/s:urlset/s:url'));
+        self::assertGreaterThanOrEqual(2, $this->node_count($xpath, '/s:urlset/s:url'));
 
         $titles = [
             $this->text($xpath, '//v:video[v:title="Sitemap Integration Video One"]/v:title'),
@@ -96,10 +115,11 @@ final class SitemapGeneratorIntegrationTest extends TestCase
      */
     public function test_generate_excludes_videos_without_metadata(): void
     {
+        $title    = 'Sitemap Integration Video Without Metadata';
         $video_id = wp_insert_post(
             [
                 'post_type'   => 'video',
-                'post_title'  => 'Sitemap Integration Video Without Metadata',
+                'post_title'  => $title,
                 'post_status' => 'publish',
             ],
             true
@@ -110,7 +130,90 @@ final class SitemapGeneratorIntegrationTest extends TestCase
         $result = $this->generator()->generate();
 
         self::assertTrue($result->regenerated);
-        self::assertSame(0, $result->video_count);
+        self::assertFalse($this->sitemap_contains_title($title));
+    }
+
+    /**
+     * A video with real Cloudflare Stream metadata but no WordPress Media
+     * Library OG-image set is also excluded — ADR-0001's 2026-08-25
+     * addendum removed the Cloudflare Stream thumbnail fallback
+     * entirely, and Google's video sitemap protocol requires a real
+     * `<video:thumbnail_loc>`, not a fabricated one.
+     */
+    public function test_generate_excludes_videos_without_a_media_library_og_image(): void
+    {
+        $title    = 'Sitemap Integration Video Without OG Image';
+        $video_id = wp_insert_post(
+            [
+                'post_type'   => 'video',
+                'post_title'  => $title,
+                'post_status' => 'publish',
+            ],
+            true
+        );
+        self::assertIsInt($video_id);
+        $this->created_video_ids[] = $video_id;
+
+        Tube_Core_Plugin::instance()->video_metadata_repository()->create(
+            $video_id,
+            'sitemap-test-cf-uid-no-og-image-' . $video_id,
+            CfStreamStatus::Ready
+        );
+
+        $result = $this->generator()->generate();
+
+        self::assertTrue($result->regenerated);
+        self::assertFalse($this->sitemap_contains_title($title));
+    }
+
+    /**
+     * 2026-08-26 SEO audit P0 fix: a video with real Cloudflare Stream
+     * metadata and a poster_image_id but no og_image_id override is
+     * still included, using the poster image as its <video:thumbnail_loc>
+     * — og_image_id is null for every real video under the current
+     * PosterImageMetaBox admin flow, so requiring it alone excluded 100%
+     * of real published videos from this sitemap.
+     */
+    public function test_generate_includes_a_video_using_poster_image_when_no_og_image_is_set(): void
+    {
+        $title    = 'Sitemap Integration Video With Poster Only';
+        $video_id = wp_insert_post(
+            [
+                'post_type'   => 'video',
+                'post_title'  => $title,
+                'post_status' => 'publish',
+            ],
+            true
+        );
+        self::assertIsInt($video_id);
+        $this->created_video_ids[] = $video_id;
+
+        Tube_Core_Plugin::instance()->video_metadata_repository()->create(
+            $video_id,
+            'sitemap-test-cf-uid-poster-only-' . $video_id,
+            CfStreamStatus::Ready
+        );
+
+        $attachment_id                  = $this->create_test_attachment('Sitemap Poster-Only Test Image');
+        $this->created_attachment_ids[] = $attachment_id;
+
+        Tube_Core_Plugin::instance()->video_metadata_repository()->update_images($video_id, $attachment_id, null);
+
+        $result = $this->generator()->generate();
+
+        self::assertTrue($result->regenerated);
+
+        $path = trailingslashit(SitemapGenerator::directory()) . 'video-sitemap.xml';
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- reading this test's own locally-generated file, not a remote URL.
+        $contents = (string) file_get_contents($path);
+        $xpath    = $this->xpath($contents);
+
+        $expected_url = wp_get_attachment_image_url($attachment_id, [1200, 630]);
+        self::assertIsString($expected_url);
+        self::assertSame(
+            $expected_url,
+            $this->text($xpath, "//v:video[v:title=\"{$title}\"]/v:thumbnail_loc")
+        );
     }
 
     /**
@@ -133,14 +236,16 @@ final class SitemapGeneratorIntegrationTest extends TestCase
      */
     public function test_force_regenerates_even_when_nothing_changed(): void
     {
-        $this->create_ready_video('Sitemap Integration Force Video');
+        $title = 'Sitemap Integration Force Video';
+        $this->create_ready_video($title);
 
         $first = $this->generator()->generate();
         self::assertTrue($first->regenerated);
 
         $second = $this->generator()->generate(true);
         self::assertTrue($second->regenerated);
-        self::assertSame(1, $second->video_count);
+        self::assertGreaterThanOrEqual(1, $second->video_count);
+        self::assertTrue($this->sitemap_contains_title($title));
     }
 
     /**
@@ -151,12 +256,15 @@ final class SitemapGeneratorIntegrationTest extends TestCase
         $this->create_ready_video('Sitemap Integration First Video');
         $first = $this->generator()->generate();
         self::assertTrue($first->regenerated);
+        $first_count = $first->video_count;
 
-        $this->create_ready_video('Sitemap Integration Second Video');
+        $second_title = 'Sitemap Integration Second Video';
+        $this->create_ready_video($second_title);
         $second = $this->generator()->generate();
 
         self::assertTrue($second->regenerated);
-        self::assertSame(2, $second->video_count);
+        self::assertSame($first_count + 1, $second->video_count);
+        self::assertTrue($this->sitemap_contains_title($second_title));
     }
 
     /**
@@ -164,6 +272,8 @@ final class SitemapGeneratorIntegrationTest extends TestCase
      */
     public function test_generate_shards_and_writes_an_index_when_over_the_url_limit(): void
     {
+        $restore_ambient = $this->suppress_ambient_published_videos();
+
         $this->create_ready_video('Sitemap Integration Shard Video One');
         $this->create_ready_video('Sitemap Integration Shard Video Two');
         $this->create_ready_video('Sitemap Integration Shard Video Three');
@@ -175,6 +285,7 @@ final class SitemapGeneratorIntegrationTest extends TestCase
             $result = $this->generator()->generate();
         } finally {
             remove_filter('tube_seo_sitemap_urls_per_sitemap', $limiter);
+            $restore_ambient();
         }
 
         self::assertTrue($result->regenerated);
@@ -207,32 +318,205 @@ final class SitemapGeneratorIntegrationTest extends TestCase
      */
     public function test_generate_deletes_stale_files_left_over_from_a_larger_previous_run(): void
     {
-        $this->create_ready_video('Sitemap Integration Shrink Video One');
-        $this->create_ready_video('Sitemap Integration Shrink Video Two');
-
-        $limiter = static fn (): int => 1;
-        add_filter('tube_seo_sitemap_urls_per_sitemap', $limiter);
+        $restore_ambient = $this->suppress_ambient_published_videos();
 
         try {
-            $sharded = $this->generator()->generate();
+            $this->create_ready_video('Sitemap Integration Shrink Video One');
+            $this->create_ready_video('Sitemap Integration Shrink Video Two');
+
+            $limiter = static fn (): int => 1;
+            add_filter('tube_seo_sitemap_urls_per_sitemap', $limiter);
+
+            try {
+                $sharded = $this->generator()->generate();
+            } finally {
+                remove_filter('tube_seo_sitemap_urls_per_sitemap', $limiter);
+            }
+
+            self::assertSame(2, $sharded->shard_count);
+
+            $directory = SitemapGenerator::directory();
+            self::assertFileExists(trailingslashit($directory) . 'video-sitemap-1.xml');
+            self::assertFileExists(trailingslashit($directory) . 'video-sitemap-2.xml');
+            self::assertFileExists(trailingslashit($directory) . 'video-sitemap-index.xml');
+
+            $unsharded = $this->generator()->generate(true);
+
+            self::assertSame(1, $unsharded->shard_count);
+            self::assertFileExists(trailingslashit($directory) . 'video-sitemap.xml');
+            self::assertFileDoesNotExist(trailingslashit($directory) . 'video-sitemap-1.xml');
+            self::assertFileDoesNotExist(trailingslashit($directory) . 'video-sitemap-2.xml');
+            self::assertFileDoesNotExist(trailingslashit($directory) . 'video-sitemap-index.xml');
         } finally {
-            remove_filter('tube_seo_sitemap_urls_per_sitemap', $limiter);
+            $restore_ambient();
+        }
+    }
+
+    /**
+     * ADR-0001: a video with a WordPress Media Library OG-image override
+     * gets that attachment's URL as its sitemap `<video:thumbnail_loc>`,
+     * not the Cloudflare Stream thumbnail — closing a pre-existing gap
+     * where the sitemap always used the Stream thumbnail directly.
+     */
+    public function test_generate_honors_media_library_og_image_override_as_thumbnail(): void
+    {
+        $title    = 'Sitemap Integration OG Override Video';
+        $video_id = $this->create_ready_video($title);
+
+        $attachment_id = $this->create_test_attachment('Sitemap Integration OG Override Attachment');
+
+        try {
+            Tube_Core_Plugin::instance()->video_metadata_repository()->update_images(
+                $video_id,
+                null,
+                $attachment_id
+            );
+
+            $result = $this->generator()->generate();
+            self::assertTrue($result->regenerated);
+
+            $path = trailingslashit(SitemapGenerator::directory()) . 'video-sitemap.xml';
+            // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- reading this test's own locally-generated file, not a remote URL.
+            $contents = (string) file_get_contents($path);
+            $xpath    = $this->xpath($contents);
+
+            $expected_url = wp_get_attachment_image_url($attachment_id, [1200, 630]);
+            self::assertIsString($expected_url);
+            self::assertSame(
+                $expected_url,
+                $this->text($xpath, "//v:video[v:title=\"{$title}\"]/v:thumbnail_loc")
+            );
+        } finally {
+            wp_delete_attachment($attachment_id, true);
+        }
+    }
+
+    /**
+     * Create a real `attachment` post backed by a real 1x1 PNG file with
+     * real generated `_wp_attachment_metadata` — the same shape a genuine
+     * `wp.media()` upload produces. A bare `wp_insert_post()` with no
+     * underlying file/metadata is not sufficient: `wp_get_attachment_image_url()`
+     * legitimately returns `false` for an array `$size` with no
+     * attachment metadata to resolve against.
+     *
+     * @param string $title The attachment's post title.
+     */
+    private function create_test_attachment(string $title): int
+    {
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+
+        $upload_dir = wp_upload_dir();
+        $filename   = 'tube-seo-sitemap-test-' . uniqid('', true) . '.png';
+        $file_path  = trailingslashit($upload_dir['path']) . $filename;
+
+        // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- decoding a fixed, hardcoded test-fixture image, not obfuscation.
+        $png_bytes = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+            true
+        );
+        self::assertIsString($png_bytes);
+
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- test fixture writing to this run's own uploads dir, not a runtime request path.
+        file_put_contents($file_path, $png_bytes);
+
+        $attachment_id = wp_insert_attachment(
+            [
+                'post_mime_type' => 'image/png',
+                'post_title'     => $title,
+                'post_status'    => 'inherit',
+            ],
+            $file_path
+        );
+
+        wp_update_attachment_metadata($attachment_id, wp_generate_attachment_metadata($attachment_id, $file_path));
+
+        return $attachment_id;
+    }
+
+    /**
+     * Whether the currently-generated video-sitemap.xml contains a `<video>` entry with this title.
+     *
+     * @param string $title The video title to look for.
+     */
+    private function sitemap_contains_title(string $title): bool
+    {
+        $path = trailingslashit(SitemapGenerator::directory()) . 'video-sitemap.xml';
+
+        if (! file_exists($path)) {
+            return false;
         }
 
-        self::assertSame(2, $sharded->shard_count);
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- reading this test's own locally-generated file, not a remote URL.
+        $contents = (string) file_get_contents($path);
+        $xpath    = $this->xpath($contents);
 
-        $directory = SitemapGenerator::directory();
-        self::assertFileExists(trailingslashit($directory) . 'video-sitemap-1.xml');
-        self::assertFileExists(trailingslashit($directory) . 'video-sitemap-2.xml');
-        self::assertFileExists(trailingslashit($directory) . 'video-sitemap-index.xml');
+        return '' !== $this->text($xpath, "//v:video[v:title=\"{$title}\"]/v:title");
+    }
 
-        $unsharded = $this->generator()->generate(true);
+    /**
+     * Temporarily unpublish every real, ambient published video not
+     * created by this test — this suite runs against the actual site
+     * database (tests/Integration/bootstrap.php loads a real
+     * wp-load.php), and the 2026-08-26 SEO audit P0 fix (SitemapGenerator
+     * falling back to poster_image_id) means real pre-existing videos
+     * now legitimately qualify for sitemap inclusion, which breaks any
+     * test asserting an exact total shard/video count. Only the two
+     * tests that genuinely need a controlled total (sharding math) use
+     * this; every other test instead asserts by specific title, which
+     * stays correct regardless of ambient data.
+     *
+     * Uses a raw `$wpdb->update()` against `post_status` directly, NOT
+     * `wp_update_post()` — deliberately. `wp_update_post()` fires the
+     * full `save_post`/`transition_post_status` hook stack, which
+     * includes tube-search's own real-video reindex-on-publish
+     * subscriber; that subscriber was found (2026-08-26, while writing
+     * this fix) to reset a real video's `wp_tube_search_index.views_total`
+     * to 0 on every status transition — a real, pre-existing tube-search
+     * bug, unrelated to and out of scope for this SEO fix, but one this
+     * suppression helper must not trigger against real videos at all. A
+     * direct SQL status flip changes exactly the one column
+     * `PublishedVideoRepository`'s own raw `$wpdb` read cares about,
+     * firing no hooks and touching no other column.
+     *
+     * @return callable(): void Call (in a `finally` block) to restore every affected post's original status.
+     */
+    private function suppress_ambient_published_videos(): callable
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
 
-        self::assertSame(1, $unsharded->shard_count);
-        self::assertFileExists(trailingslashit($directory) . 'video-sitemap.xml');
-        self::assertFileDoesNotExist(trailingslashit($directory) . 'video-sitemap-1.xml');
-        self::assertFileDoesNotExist(trailingslashit($directory) . 'video-sitemap-2.xml');
-        self::assertFileDoesNotExist(trailingslashit($directory) . 'video-sitemap-index.xml');
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- one-off test-isolation read, not production code.
+        $ambient_ids       = $wpdb->get_col(
+            $wpdb->prepare(
+                'SELECT ID FROM %i WHERE post_type = %s AND post_status = %s',
+                $wpdb->posts,
+                'video',
+                'publish'
+            )
+        );
+        $typed_ambient_ids = [];
+
+        foreach ($ambient_ids as $id) {
+            if (is_numeric($id)) {
+                $typed_ambient_ids[] = (int) $id;
+            }
+        }
+
+        $ambient_ids = $typed_ambient_ids;
+
+        foreach ($ambient_ids as $id) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- deliberate: see this method's own docblock for why wp_update_post() must not be used here.
+            $wpdb->update($wpdb->posts, ['post_status' => 'draft'], ['ID' => $id]);
+            clean_post_cache($id);
+        }
+
+        return static function () use ($ambient_ids, $wpdb): void {
+            foreach ($ambient_ids as $id) {
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- deliberate: see this method's own docblock for why wp_update_post() must not be used here.
+                $wpdb->update($wpdb->posts, ['post_status' => 'publish'], ['ID' => $id]);
+                clean_post_cache($id);
+            }
+        };
     }
 
     /**
@@ -244,7 +528,17 @@ final class SitemapGeneratorIntegrationTest extends TestCase
     }
 
     /**
-     * Create a real published video post with ready Cloudflare Stream metadata, tracked for teardown.
+     * Create a real published video post with ready Cloudflare Stream
+     * metadata AND a real WordPress Media Library OG-image attachment
+     * (tracked for teardown), tracked for teardown — sitemap-eligible per
+     * self::build_entries()'s "not ready" gate (ADR-0001's 2026-08-25
+     * addendum: no Cloudflare Stream thumbnail fallback, so a video with
+     * no OG image is excluded — see
+     * self::test_generate_excludes_videos_without_a_media_library_og_image()
+     * for that case specifically). Every other test in this class cares
+     * about sharding/incremental/count behavior, not the thumbnail
+     * resolution itself, so a real default attachment here keeps them
+     * exercising that behavior without being blocked by this gate.
      *
      * @param string $title The post title.
      */
@@ -266,6 +560,11 @@ final class SitemapGeneratorIntegrationTest extends TestCase
             'sitemap-test-cf-uid-' . $video_id,
             CfStreamStatus::Ready
         );
+
+        $attachment_id                  = $this->create_test_attachment($title . ' Default OG Image');
+        $this->created_attachment_ids[] = $attachment_id;
+
+        Tube_Core_Plugin::instance()->video_metadata_repository()->update_images($video_id, null, $attachment_id);
 
         return $video_id;
     }

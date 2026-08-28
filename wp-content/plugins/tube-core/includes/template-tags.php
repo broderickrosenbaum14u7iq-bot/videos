@@ -20,6 +20,7 @@ declare(strict_types=1);
 use Tube_Core\Content\Actor;
 use Tube_Core\Content\Studio;
 use Tube_Core\Plugin as Tube_Core_Plugin;
+use Tube_Core\WatchHistory\VisitorToken;
 
 /**
  * Find an actor by URL slug, per ARCHITECTURE.md §14.
@@ -140,4 +141,67 @@ function tube_core_get_actors(array $actor_ids): array
 function tube_core_get_studios(array $studio_ids): array
 {
     return Tube_Core_Plugin::instance()->studio_repository()->find_many($studio_ids);
+}
+
+/**
+ * A video's current real like count, per the mobile watch-page
+ * redesign's Like system — a single indexed read, safe to call once per
+ * single-video page render.
+ *
+ * @param int $video_id The video post ID.
+ */
+function tube_core_likes_total(int $video_id): int
+{
+    return Tube_Core_Plugin::instance()->video_statistics_repository()->likes_total($video_id);
+}
+
+/**
+ * Whether the current viewer already has this video liked — the watch
+ * page's initial UI state. Never creates a guest visitor-token cookie
+ * (unlike `Tube_Core\Likes\LikeController`'s own POST handler, which is
+ * allowed to): a plain GET page render must not set a cookie on what
+ * would otherwise be a cacheable response, so a guest who has never
+ * interacted yet (no `tube_visitor` cookie) is simply reported as not
+ * having liked anything, which is always correct for them.
+ *
+ * @param int $video_id The video post ID.
+ */
+function tube_core_has_liked(int $video_id): bool
+{
+    $user_id = get_current_user_id();
+
+    if (0 !== $user_id) {
+        return Tube_Core_Plugin::instance()->like_repository()->has_liked($user_id, null, $video_id);
+    }
+
+    $visitor_token = (new VisitorToken())->current();
+
+    if (null === $visitor_token) {
+        return false;
+    }
+
+    return Tube_Core_Plugin::instance()->like_repository()->has_liked(null, $visitor_token, $video_id);
+}
+
+/**
+ * Whether the current viewer already has this video saved ("Watch
+ * Later"). Same never-creates-a-cookie posture as tube_core_has_liked() — see its docblock.
+ *
+ * @param int $video_id The video post ID.
+ */
+function tube_core_has_saved(int $video_id): bool
+{
+    $user_id = get_current_user_id();
+
+    if (0 !== $user_id) {
+        return Tube_Core_Plugin::instance()->saved_video_repository()->has_saved($user_id, null, $video_id);
+    }
+
+    $visitor_token = (new VisitorToken())->current();
+
+    if (null === $visitor_token) {
+        return false;
+    }
+
+    return Tube_Core_Plugin::instance()->saved_video_repository()->has_saved(null, $visitor_token, $video_id);
 }

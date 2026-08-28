@@ -259,4 +259,79 @@ final class VideoMetadataRepositoryIntegrationTest extends TestCase
             'find() after update_status() must see the new status, not the one cached before the update.'
         );
     }
+
+    /**
+     * Phase (ADR-0001) regression test: update_stream_uid(), added for
+     * tube-admin's manually-editable Stream UID field, persists the new
+     * UID and invalidates the cache, and find_video_id_by_stream_uid()
+     * resolves the new UID afterward.
+     */
+    public function test_update_stream_uid_persists_the_new_uid_and_invalidates_the_cache(): void
+    {
+        $original_uid = 'uid-original-' . uniqid('', true);
+        $new_uid      = 'uid-new-' . uniqid('', true);
+
+        $this->repository->create($this->video_id, $original_uid, CfStreamStatus::Pending);
+
+        self::assertSame($original_uid, $this->repository->find($this->video_id)?->cf_stream_uid);
+
+        $this->repository->update_stream_uid($this->video_id, $new_uid);
+
+        self::assertSame(
+            $new_uid,
+            $this->repository->find($this->video_id)?->cf_stream_uid,
+            'find() after update_stream_uid() must see the new UID, not the one cached before the update.'
+        );
+        self::assertSame($this->video_id, $this->repository->find_video_id_by_stream_uid($new_uid));
+        self::assertNull(
+            $this->repository->find_video_id_by_stream_uid($original_uid),
+            'The old UID must no longer resolve to any video once it has been replaced.'
+        );
+    }
+
+    /**
+     * `all_stream_uids()` — the batch-resync read path
+     * `Tube_Core\CLI\StreamCommand` walks the whole catalog with — surfaces
+     * a real video's row somewhere across a full paginated walk, with its
+     * exact stored UID. Doesn't assert an exact/exhaustive listing (this
+     * table holds real rows from other tests/environments too, the same
+     * shared-database-pollution risk `SitemapGeneratorIntegrationTest`
+     * already had to account for) — walking with a small page size and
+     * collecting every row proves pagination itself works (no row
+     * skipped/duplicated across pages) without depending on the table
+     * being otherwise empty.
+     */
+    public function test_all_stream_uids_surfaces_a_real_row_across_a_paginated_walk(): void
+    {
+        $cf_stream_uid = 'uid-all-stream-uids-' . uniqid('', true);
+        $this->repository->create($this->video_id, $cf_stream_uid, CfStreamStatus::Pending);
+
+        $found  = null;
+        $offset = 0;
+        $limit  = 3;
+        $seen   = [];
+
+        do {
+            $page      = $this->repository->all_stream_uids($limit, $offset);
+            $page_size = count($page);
+
+            foreach ($page as $row) {
+                self::assertArrayNotHasKey(
+                    $row['video_id'],
+                    $seen,
+                    'all_stream_uids() must not return the same video_id on two different pages.'
+                );
+                $seen[ $row['video_id'] ] = true;
+
+                if ($row['video_id'] === $this->video_id) {
+                    $found = $row;
+                }
+            }
+
+            $offset += $limit;
+        } while ($page_size === $limit);
+
+        self::assertNotNull($found, 'The created video must appear somewhere in the paginated walk.');
+        self::assertSame($cf_stream_uid, $found['cf_stream_uid']);
+    }
 }

@@ -15,11 +15,11 @@ use Tube_Core\Video\VideoMetadata;
 
 /**
  * An in-memory VideoMetadataRepositoryInterface — no database. Stateful
- * (not just a call recorder): {@see self::find_video_id_by_stream_uid()}
- * and {@see self::status_for()} reflect what {@see self::create()}/
- * {@see self::update_status()} actually wrote, which is what lets
- * `StreamStatusUpdaterTest` exercise real compare-old-vs-new-status
- * behavior against this fake.
+ * (not just a call recorder): {@see self::find_video_id_by_stream_uid()},
+ * {@see self::status_for()}, and {@see self::find()}'s duration reflect
+ * what {@see self::create()}/{@see self::update_status()} actually wrote,
+ * which is what lets `StreamStatusUpdaterTest` exercise real
+ * compare-old-vs-new-status-and-duration behavior against this fake.
  */
 final class InMemoryVideoMetadataRepository implements VideoMetadataRepositoryInterface
 {
@@ -36,6 +36,16 @@ final class InMemoryVideoMetadataRepository implements VideoMetadataRepositoryIn
      * @var array<int, CfStreamStatus>
      */
     private array $status_by_video_id = [];
+
+    /**
+     * Current duration, keyed by video ID — a key's mere presence (checked
+     * via array_key_exists(), not isset()) means "this video has a known
+     * duration," since null is a legitimate "not yet known" value distinct
+     * from "never written."
+     *
+     * @var array<int, int|null>
+     */
+    private array $duration_by_video_id = [];
 
     /**
      * Every create() call this fake received, in order.
@@ -69,14 +79,20 @@ final class InMemoryVideoMetadataRepository implements VideoMetadataRepositoryIn
      * Seed existing state, as if a prior create()/update_status() had
      * already happened — for test setup, not part of the interface.
      *
-     * @param string         $cf_stream_uid The Cloudflare Stream UID.
-     * @param int            $video_id      The video post ID.
-     * @param CfStreamStatus $status        The status to seed.
+     * @param string         $cf_stream_uid    The Cloudflare Stream UID.
+     * @param int            $video_id         The video post ID.
+     * @param CfStreamStatus $status           The status to seed.
+     * @param int|null       $duration_seconds The duration to seed, if any (defaults to not-yet-known).
      */
-    public function seed(string $cf_stream_uid, int $video_id, CfStreamStatus $status): void
-    {
+    public function seed(
+        string $cf_stream_uid,
+        int $video_id,
+        CfStreamStatus $status,
+        ?int $duration_seconds = null
+    ): void {
         $this->video_id_by_uid[ $cf_stream_uid ] = $video_id;
         $this->status_by_video_id[ $video_id ]   = $status;
+        $this->duration_by_video_id[ $video_id ] = $duration_seconds;
     }
 
     /**
@@ -96,17 +112,20 @@ final class InMemoryVideoMetadataRepository implements VideoMetadataRepositoryIn
 
         $this->video_id_by_uid[ $cf_stream_uid ] = $video_id;
         $this->status_by_video_id[ $video_id ]   = $status;
+        $this->duration_by_video_id[ $video_id ] = null;
     }
 
     /**
      * {@inheritDoc}
      *
-     * Not exercised by any current consumer of this fixture (`find()` is
-     * `tube-player`'s read path, via its own decoupled fake) — implemented
-     * minimally from the same state maps `create()`/`update_status()`
+     * Implemented from the same state maps `create()`/`update_status()`
      * already track, defaulting the fields this fixture doesn't track
-     * (duration, thumbnail offset, image overrides) to satisfy the
-     * interface honestly rather than leaving it unimplemented.
+     * (thumbnail offset, image overrides) to satisfy the interface
+     * honestly rather than leaving them unimplemented. Duration IS
+     * tracked (`self::$duration_by_video_id`) — `StreamStatusUpdaterTest`
+     * needs a real "what duration does this video currently have" answer
+     * to exercise its compare-old-vs-new-duration decision logic against
+     * this fake.
      *
      * @param int $video_id The video post ID.
      */
@@ -128,7 +147,7 @@ final class InMemoryVideoMetadataRepository implements VideoMetadataRepositoryIn
             $video_id,
             is_string($cf_stream_uid) ? $cf_stream_uid : '',
             $status,
-            null,
+            $this->duration_by_video_id[ $video_id ] ?? null,
             $this->thumbnail_time_by_video_id[ $video_id ] ?? 0,
             $images['poster_image_id'],
             $images['og_image_id']
@@ -195,6 +214,13 @@ final class InMemoryVideoMetadataRepository implements VideoMetadataRepositoryIn
         ];
 
         $this->status_by_video_id[ $video_id ] = $status;
+
+        // Matches the real repository's own "leave unchanged if null"
+        // contract (VideoMetadataRepository::update_status()) — only a
+        // non-null $duration_seconds overwrites what's already stored.
+        if (null !== $duration_seconds) {
+            $this->duration_by_video_id[ $video_id ] = $duration_seconds;
+        }
     }
 
     /**
@@ -221,5 +247,59 @@ final class InMemoryVideoMetadataRepository implements VideoMetadataRepositoryIn
     public function update_thumbnail_time(int $video_id, int $thumbnail_time_seconds): void
     {
         $this->thumbnail_time_by_video_id[ $video_id ] = $thumbnail_time_seconds;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int    $video_id      The video post ID.
+     * @param string $cf_stream_uid The new Cloudflare Stream UID.
+     */
+    public function update_stream_uid(int $video_id, string $cf_stream_uid): void
+    {
+        // Remove any prior UID mapping for this video before recording
+        // the new one, so a UID isn't left pointing at a video that no
+        // longer has it — the same state-consistency
+        // create()/update_status() already maintain in this fixture.
+        $previous_uid = array_search($video_id, $this->video_id_by_uid, true);
+
+        if (is_string($previous_uid)) {
+            unset($this->video_id_by_uid[ $previous_uid ]);
+        }
+
+        $this->video_id_by_uid[ $cf_stream_uid ] = $video_id;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * Not exercised by any current consumer of this fixture (`Tube_Core\CLI\StreamCommand`
+     * is WordPress/WP-CLI-coupled and verified live, not unit-tested) —
+     * implemented for real (not stubbed) from `self::$video_id_by_uid`,
+     * ordered by video_id, so this fixture stays honest about what it
+     * actually holds if a future consumer does need it.
+     *
+     * @param int $limit  How many rows to return.
+     * @param int $offset How many rows to skip.
+     *
+     * @return list<array{video_id: int, cf_stream_uid: string}>
+     */
+    public function all_stream_uids(int $limit, int $offset): array
+    {
+        $by_video_id = array_flip($this->video_id_by_uid);
+        ksort($by_video_id);
+
+        $page = array_slice($by_video_id, $offset, $limit, true);
+
+        $result = [];
+
+        foreach ($page as $video_id => $cf_stream_uid) {
+            $result[] = [
+                'video_id'      => $video_id,
+                'cf_stream_uid' => $cf_stream_uid,
+            ];
+        }
+
+        return $result;
     }
 }

@@ -9,20 +9,35 @@ declare(strict_types=1);
 
 namespace Tube_Admin\Video;
 
-use Tube_Admin\Media\ImageUploadException;
 use Tube_Admin\Plugin;
 use Tube_Admin\Support\Request;
 use Tube_Core\Content\VideoPostType;
 use Tube_Core\Plugin as Tube_Core_Plugin;
 
 /**
- * The `wp-admin` surface combining three of Phase 10's named deliverables
- * for a single video — video metadata management, actor/studio
- * assignment UI, and custom-poster upload UI — into one screen rather
- * than three near-identical "pick a video, edit one thing" pages. A real
- * editorial workflow edits a video's admin-managed fields together, not
- * through three separate lookups of the same video; see `PHASE-10.md`'s
- * design decisions for the full reasoning.
+ * The `wp-admin` surface combining thumbnail-offset management, OG-image
+ * selection (WordPress Media Library, per ADR-0001), and actor/studio
+ * assignment for a single video — into one screen rather than several
+ * near-identical "pick a video, edit one thing" pages. A real editorial
+ * workflow edits a video's admin-managed fields together, not through
+ * separate lookups of the same video; see `PHASE-10.md`'s design
+ * decisions for the original reasoning, extended by ADR-0001.
+ *
+ * Neither the Cloudflare Stream UID nor the poster image is managed
+ * here — both live on WordPress's own native "Videos → Add New"/"Edit
+ * Video" screen instead (`Tube_Admin\Video\StreamUidMetaBox`,
+ * `Tube_Admin\Video\PosterImageMetaBox` — the latter since the ADR's
+ * 2026-08-25 addendum), so an editor sets them exactly where they're
+ * already creating/editing the video, without a second trip to a
+ * separate `wp-admin` page. This screen only displays the Stream UID and
+ * poster (both read-only, with a link to the native edit screen) since
+ * every field this screen *does* manage (OG-image override, thumbnail
+ * offset, actor/studio assignment) is meaningless without a
+ * `wp_tube_video_metadata` row already existing — which the Stream UID
+ * meta box is what creates, on the native screen. `og_image_id` is kept
+ * here, not moved: it is a distinct field (the social-share preview
+ * image, not the video-card poster) the native screen's required-field
+ * list was never asked to include.
  *
  * WordPress-coupled throughout and integration/live-tested only, the
  * same split every other screen in this plugin uses.
@@ -96,6 +111,17 @@ final class VideoDetailsScreen
         $assigned_actors  = $actor_repository->actor_ids_for_video($video_id);
         $assigned_studios = $studio_repository->studio_ids_for_video($video_id);
 
+        // Only the edit view needs the media modal (OG-image picker,
+        // ADR-0001) — the picker view above never reaches here.
+        wp_enqueue_media();
+        wp_enqueue_script(
+            'tube-admin-media-picker',
+            plugins_url('assets/js/media-picker.js', TUBE_ADMIN_FILE),
+            [],
+            TUBE_ADMIN_VERSION,
+            true
+        );
+
         require __DIR__ . '/views/edit.php';
     }
 
@@ -120,17 +146,31 @@ final class VideoDetailsScreen
 
         $metadata_repository = Tube_Core_Plugin::instance()->video_metadata_repository();
         $current             = $metadata_repository->find($video_id);
-        $poster_image_id     = null === $current ? null : $current->poster_image_id;
-        $og_image_id         = null === $current ? null : $current->og_image_id;
+
+        if (null === $current) {
+            // No wp_tube_video_metadata row yet — the administrator hasn't
+            // set this video's Cloudflare Stream UID on its native edit
+            // screen (Tube_Admin\Video\StreamUidMetaBox) yet, so there is
+            // no row to attach a poster/OG override or thumbnail offset
+            // to. Redirect back with an explanatory notice rather than
+            // silently no-op every write below.
+            self::redirect_with_error($video_id, 'no_stream_uid_yet');
+        }
+
+        // poster_image_id is intentionally never touched here — it is
+        // read-only on this screen (Tube_Admin\Video\PosterImageMetaBox on
+        // the native Videos → Add New/Edit Video screen is the only
+        // writer, since the ADR's 2026-08-25 addendum), so whatever it
+        // currently is is preserved unchanged.
+        $og_image_id = $current->og_image_id;
 
         // phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce already verified above.
         $thumbnail_time = absint(wp_unslash(Request::string($_POST, 'thumbnail_time_seconds')));
         $metadata_repository->update_thumbnail_time($video_id, $thumbnail_time);
 
-        $poster_image_id = self::apply_image_field('poster_image', 'remove_poster_image', $poster_image_id);
-        $og_image_id     = self::apply_image_field('og_image', 'remove_og_image', $og_image_id);
+        $og_image_id = self::resolve_image_field('og_image_id', $og_image_id);
 
-        $metadata_repository->update_images($video_id, $poster_image_id, $og_image_id);
+        $metadata_repository->update_images($video_id, $current->poster_image_id, $og_image_id);
 
         $actor_ids  = self::selected_ids('actor_ids');
         $studio_ids = self::selected_ids('studio_ids');
@@ -215,69 +255,58 @@ final class VideoDetailsScreen
     }
 
     /**
-     * Apply an uploaded-file/removal-checkbox pair for one image field
-     * (poster or OG) and return the ID that should end up persisted.
-     * Best-effort: a delete failure for a superseded/removed image is
-     * silently accepted (the field's new value is already correct
-     * either way) — the same posture `PosterUploadService::replace()`
-     * already documents for its own delete step.
+     * Resolve one poster/OG-image field's submitted WordPress attachment
+     * ID (ADR-0001) — the hidden input `Tube_Admin\Video\views\edit.php`'s
+     * media-picker JS writes to, either a real attachment ID or '' (no
+     * image selected/picker's "Remove" button pressed). An unattached
+     * media library upload is deliberately left as-is (never deleted)
+     * when replaced or cleared here: unlike the old Cloudflare Images
+     * flow, a WordPress attachment is a first-class Media Library item an
+     * editor may reuse elsewhere or manage from Media → Library directly,
+     * not a purpose-specific upload this screen exclusively owns the
+     * lifecycle of.
      *
-     * @param string   $file_field    The `$_FILES` key for this field.
-     * @param string   $remove_field  The `$_POST` checkbox key requesting removal.
-     * @param int|null $current_id    The image ID currently stored for this field.
+     * @param string   $field      The `$_POST` field name (`poster_image_id` or `og_image_id`).
+     * @param int|null $current_id The ID currently stored for this field, kept if the submission is invalid.
      */
-    private static function apply_image_field(string $file_field, string $remove_field, ?int $current_id): ?int
+    private static function resolve_image_field(string $field, ?int $current_id): ?int
     {
         // phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce for this whole request already verified in handle_save().
-        $files      = $_FILES[ $file_field ] ?? null;
-        $has_upload = is_array($files) && isset($files['tmp_name']) && '' !== $files['tmp_name'];
+        $raw = trim(wp_unslash(Request::string($_POST, $field)));
 
-        if ($has_upload) {
-            require_once ABSPATH . 'wp-admin/includes/file.php';
-
-            /** @var array{name?: string, type?: string, tmp_name?: string, size?: int, error?: int} $files */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
-            $upload = wp_handle_upload($files, ['test_form' => false]);
-
-            if (! isset($upload['file']) || ! is_string($upload['file'])) {
-                return $current_id;
-            }
-
-            $file_path = $upload['file'];
-            $filename  = wp_basename($file_path);
-
-            try {
-                return Plugin::instance()->poster_upload_service()->replace(
-                    $file_path,
-                    $filename,
-                    $current_id,
-                    static function (int $new_id): void {
-                        // Persistence for both image fields happens together
-                        // in handle_save()'s single update_images() call
-                        // after both fields are resolved -- nothing to do here.
-                    }
-                );
-            } catch (ImageUploadException $exception) {
-                return $current_id;
-            } finally {
-                wp_delete_file($file_path);
-            }
-        }
-
-        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce for this whole request already verified in handle_save().
-        $remove_requested = isset($_POST[ $remove_field ]);
-
-        if ($remove_requested && null !== $current_id) {
-            try {
-                Plugin::instance()->image_uploader()->delete($current_id);
-            } catch (ImageUploadException $exception) {
-                // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch -- best-effort delete; failure intentionally ignored, see this method's own docblock.
-                unset($exception);
-            }
-
+        if ('' === $raw) {
             return null;
         }
 
-        return $current_id;
+        $attachment_id = absint($raw);
+
+        if (0 === $attachment_id || ! wp_attachment_is_image($attachment_id)) {
+            return $current_id;
+        }
+
+        return $attachment_id;
+    }
+
+    /**
+     * Redirect back to this video's edit form with an error notice, then exit.
+     *
+     * @param int    $video_id   The video post ID.
+     * @param string $error_code A short code `views/edit.php` maps to a translated message.
+     */
+    private static function redirect_with_error(int $video_id, string $error_code): never
+    {
+        wp_safe_redirect(
+            add_query_arg(
+                [
+                    'page'     => self::SLUG,
+                    'video_id' => $video_id,
+                    'error'    => $error_code,
+                ],
+                admin_url('admin.php')
+            )
+        );
+
+        exit;
     }
 
     /**

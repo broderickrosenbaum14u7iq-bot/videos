@@ -91,8 +91,6 @@ function tube_player_get_image_html(int $video_id, string $size, array $args = [
     $override_image_id = ImageSize::OgImage === $resolved_size ? $metadata->og_image_id : $metadata->poster_image_id;
 
     return \Tube_Player\Plugin::instance()->image_renderer()->render(
-        $metadata->cf_stream_uid,
-        $metadata->thumbnail_time_seconds,
         $override_image_id,
         $resolved_size,
         $args
@@ -131,8 +129,8 @@ function tube_player_get_embed_html(int $video_id, array $args = []): string
     );
 
     return \Tube_Player\Plugin::instance()->player_renderer()->render(
+        $video_id,
         $metadata->cf_stream_uid,
-        $metadata->thumbnail_time_seconds,
         $metadata->poster_image_id,
         $args
     );

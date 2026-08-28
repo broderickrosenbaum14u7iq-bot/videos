@@ -19,11 +19,28 @@ if (!defined('ABSPATH')) {
 
 get_header();
 
+// The raw, still-percent-encoded query text — fed as-is into
+// rawurlencode() below for pagination URLs (re-encoding an
+// already-decoded value once is correct; this raw value is not decoded
+// first, so those links are not this file's concern to fix here — see
+// tube_search_current_query()'s own docblock).
 $tube_theme_query = tube_search_current_query();
-$tube_theme_page  = tube_theme_current_page();
+
+// The same query, decoded — used both for human display (the heading
+// below) and as the real matching input (Tube_Search\Search\TextNormalizer::normalize()
+// expects already-decoded UTF-8, not a percent-encoded value) — see
+// tube_search_current_query_display()'s own docblock.
+$tube_theme_query_display = tube_search_current_query_display();
+
+$tube_theme_page = tube_theme_current_page();
+
+// Matching needs real, decoded text too (Tube_Search\Search\TextNormalizer::normalize()
+// expects already-decoded UTF-8 — see its own docblock) — $tube_theme_query_display
+// is exactly that value, already computed above for the heading; reusing
+// it here is a matching-input fix, not a change to how it's decoded.
 $tube_theme_items = tube_search_query(
     [
-        'q'    => $tube_theme_query,
+        'q'    => $tube_theme_query_display,
         'page' => $tube_theme_page,
     ]
 );
@@ -40,8 +57,8 @@ $tube_theme_total_pages = count($tube_theme_items) < 20 ? $tube_theme_page : $tu
     <?php
     printf(
         /* translators: %s: the search query text. */
-        esc_html__('Search results for "%s"', 'tube-theme'),
-        esc_html($tube_theme_query)
+        esc_html__('Kết quả tìm kiếm cho "%s"', 'tube-theme'),
+        esc_html($tube_theme_query_display)
     );
     ?>
 </h1>
@@ -52,7 +69,7 @@ $tube_theme_total_pages = count($tube_theme_items) < 20 ? $tube_theme_page : $tu
             <circle cx="11" cy="11" r="7" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
-        <p><?php esc_html_e('No videos matched your search.', 'tube-theme'); ?></p>
+        <p><?php esc_html_e('Không tìm thấy video nào phù hợp.', 'tube-theme'); ?></p>
     </div>
 <?php else : ?>
     <?php
@@ -61,7 +78,7 @@ $tube_theme_total_pages = count($tube_theme_items) < 20 ? $tube_theme_page : $tu
         null,
         [
             'videos'        => $tube_theme_items,
-            'empty_message' => __('No more videos matched your search.', 'tube-theme'),
+            'empty_message' => __('Không còn video nào khác phù hợp.', 'tube-theme'),
             'page'          => $tube_theme_page,
             'total_pages'   => $tube_theme_total_pages,
             'page_url'      => static fn (int $tube_theme_target_page): string =>

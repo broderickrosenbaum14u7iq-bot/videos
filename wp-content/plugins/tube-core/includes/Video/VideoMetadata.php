@@ -26,8 +26,8 @@ final class VideoMetadata
      * @param CfStreamStatus $cf_status              The current encoding status.
      * @param int|null       $duration_seconds       The video's duration, if known.
      * @param int            $thumbnail_time_seconds Default-thumbnail extraction offset, in seconds.
-     * @param int|null       $poster_image_id        Cloudflare Images ID overriding the default poster, if set.
-     * @param int|null       $og_image_id            Cloudflare Images ID overriding the default OG image, if set.
+     * @param int|null       $poster_image_id        WP attachment ID overriding the default poster (ADR-0001).
+     * @param int|null       $og_image_id            WP attachment ID overriding the default OG image (ADR-0001).
      */
     public function __construct(
         public readonly int $video_id,

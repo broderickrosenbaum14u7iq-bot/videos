@@ -28,7 +28,7 @@ get_template_part(
     null,
     [
         'videos'        => $tube_theme_videos,
-        'empty_message' => __('No videos yet.', 'tube-theme'),
+        'empty_message' => __('Chưa có video nào.', 'tube-theme'),
     ]
 );
 ?>

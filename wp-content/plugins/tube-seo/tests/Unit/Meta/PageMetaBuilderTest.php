@@ -70,6 +70,28 @@ final class PageMetaBuilderTest extends TestCase
     }
 
     /**
+     * 2026-08-26 SEO audit P1 fix: $force_noindex noindexes an archive
+     * page even though it has real items on it — the thin-tag rule.
+     */
+    public function test_for_archive_with_force_noindex_is_noindexed_despite_having_items(): void
+    {
+        $meta = PageMetaBuilder::for_archive('Example Site', 'Videos', 'roma', 'desc', 'https://x/', 1, 2, true);
+
+        self::assertSame('noindex, follow', $meta->robots);
+    }
+
+    /**
+     * $force_noindex defaults to false — every existing call site
+     * (categories, actors, studios) is unaffected.
+     */
+    public function test_for_archive_without_force_noindex_stays_indexed(): void
+    {
+        $meta = PageMetaBuilder::for_archive('Example Site', 'Videos', 'Action', 'desc', 'https://x/', 1, 24);
+
+        self::assertSame('index, follow', $meta->robots);
+    }
+
+    /**
      * For_search() is always noindexed, regardless of result count.
      */
     public function test_for_search_is_always_noindexed(): void

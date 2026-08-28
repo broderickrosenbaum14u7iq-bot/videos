@@ -22,10 +22,10 @@ get_header();
     <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
     </svg>
-    <h1><?php esc_html_e('Page Not Found', 'tube-theme'); ?></h1>
-    <p><?php esc_html_e('The page you were looking for could not be found.', 'tube-theme'); ?></p>
+    <h1><?php esc_html_e('Không Tìm Thấy Trang', 'tube-theme'); ?></h1>
+    <p><?php esc_html_e('Trang bạn tìm không tồn tại.', 'tube-theme'); ?></p>
     <a class="hero__cta" href="<?php echo esc_url(home_url('/')); ?>">
-        <?php esc_html_e('Back to homepage', 'tube-theme'); ?>
+        <?php esc_html_e('Về Trang Chủ', 'tube-theme'); ?>
     </a>
 </div>
 

@@ -18,6 +18,20 @@ namespace Tube_Core\Content;
  * used as the description, and the Cloudflare Stream UID plus related
  * fields in wp_tube_video_metadata, see Migration001CreateVideoMetadataTable),
  * not freeform post content.
+ *
+ * `thumbnail` support is also deliberately omitted (removed 2026-08-25,
+ * ADR-0001's addendum) — it previously registered WordPress's native
+ * Featured Image box, relabeled "Poster Image" in self::labels(), on the
+ * `video` edit screen. That box writes to `_thumbnail_id` postmeta,
+ * which nothing in this codebase ever reads; the only canonical poster
+ * field is `wp_tube_video_metadata.poster_image_id`, set exclusively via
+ * `Tube_Admin\Video\VideoDetailsScreen`'s own Media Library picker. With
+ * both UIs visible on the same native screen (once
+ * `Tube_Admin\Video\StreamUidMetaBox` moved the Stream UID field there
+ * too), the native "Poster Image" box looked identical to the real one
+ * and silently absorbed real edits — see the ADR addendum for the full
+ * incident. Removing `thumbnail` support removes the trap outright
+ * rather than leaving a second, dead-looking-but-functional UI in place.
  */
 final class VideoPostType
 {
@@ -79,7 +93,7 @@ final class VideoPostType
             'show_in_rest'       => true,
             'rest_base'          => 'videos',
             'has_archive'        => true,
-            'supports'           => ['title', 'thumbnail', 'excerpt', 'custom-fields', 'author'],
+            'supports'           => ['title', 'excerpt', 'custom-fields', 'author'],
             'rewrite'            => [
                 'slug'       => 'watch',
                 'with_front' => false,
@@ -121,10 +135,6 @@ final class VideoPostType
             'attributes'            => __('Video Attributes', 'tube-core'),
             'insert_into_item'      => __('Insert into video', 'tube-core'),
             'uploaded_to_this_item' => __('Uploaded to this video', 'tube-core'),
-            'featured_image'        => __('Poster Image', 'tube-core'),
-            'set_featured_image'    => __('Set poster image', 'tube-core'),
-            'remove_featured_image' => __('Remove poster image', 'tube-core'),
-            'use_featured_image'    => __('Use as poster image', 'tube-core'),
         ];
     }
 }

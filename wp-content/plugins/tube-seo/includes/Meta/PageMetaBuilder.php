@@ -48,8 +48,14 @@ final class PageMetaBuilder
     /**
      * Meta for a category/tag/actor/studio archive page. Self-canonical
      * per page number (§15.2 — page 2 is never collapsed to page 1);
-     * `noindex` when the current page has zero items, since an empty
-     * listing carries no indexable content.
+     * `noindex` when the current page has zero items (an empty listing
+     * carries no indexable content) or when the caller flags the archive
+     * as thin regardless of this page's own item count (2026-08-26 SEO
+     * audit P1 finding: a free-text tag with only 1-2 videos site-wide is
+     * thin/near-duplicate content even though this page isn't literally
+     * empty — see `Tube_Seo\Head\SeoHead::resolve_term_archive()` for how
+     * that's decided; only tags use this, categories/actors/studios are
+     * always curated/deliberate groupings, not thin by construction).
      *
      * @param string $site_name     The site's name.
      * @param string $archive_label The archive kind, e.g. `'Videos'`, `'Actor'`, `'Studio'`.
@@ -58,6 +64,7 @@ final class PageMetaBuilder
      * @param string $canonical    This page's own (self-canonical) URL.
      * @param int    $page         The current page number (1-indexed).
      * @param int    $item_count   How many items are on this page.
+     * @param bool   $force_noindex Whether to noindex regardless of $item_count (thin-tag rule).
      */
     public static function for_archive(
         string $site_name,
@@ -66,7 +73,8 @@ final class PageMetaBuilder
         string $description,
         string $canonical,
         int $page,
-        int $item_count
+        int $item_count,
+        bool $force_noindex = false
     ): PageMeta {
         $title = 1 === $page
             ? "{$term_name} {$archive_label} | {$site_name}"
@@ -76,7 +84,7 @@ final class PageMetaBuilder
             $title,
             $description,
             $canonical,
-            0 === $item_count ? 'noindex, follow' : 'index, follow',
+            0 === $item_count || $force_noindex ? 'noindex, follow' : 'index, follow',
             'website',
             null
         );
@@ -106,6 +114,22 @@ final class PageMetaBuilder
             'website',
             null
         );
+    }
+
+    /**
+     * Meta for a low-value WordPress-core page type this project never
+     * deliberately built content for — attachment pages, author
+     * archives, date archives (2026-08-26 SEO audit P1 finding). Always
+     * `noindex, follow`: none of these carry curated, indexable content
+     * of their own, but their outbound links (to the real video/archive
+     * pages they list or attach to) are still worth crawling.
+     *
+     * @param string $title     The `<title>` text.
+     * @param string $canonical This page's own (self-canonical) URL.
+     */
+    public static function for_low_value_archive(string $title, string $canonical): PageMeta
+    {
+        return new PageMeta($title, '', $canonical, 'noindex, follow', 'website', null);
     }
 
     /**

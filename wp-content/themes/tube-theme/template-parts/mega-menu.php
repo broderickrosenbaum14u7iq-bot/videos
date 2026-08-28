@@ -29,9 +29,9 @@ $tube_theme_studios = tube_core_list_studios(8);
 <div class="mega-menu">
     <div class="mega-menu__grid">
         <div>
-            <h3 class="mega-menu__heading"><?php esc_html_e('Categories', 'tube-theme'); ?></h3>
+            <h3 class="mega-menu__heading"><?php esc_html_e('Danh Mục', 'tube-theme'); ?></h3>
             <?php if ([] === $tube_theme_categories) : ?>
-                <p class="mega-menu__empty"><?php esc_html_e('No categories yet.', 'tube-theme'); ?></p>
+                <p class="mega-menu__empty"><?php esc_html_e('Chưa có danh mục nào.', 'tube-theme'); ?></p>
             <?php else : ?>
                 <ul class="mega-menu__list">
                     <?php foreach ($tube_theme_categories as $tube_theme_category) : ?>
@@ -49,9 +49,9 @@ $tube_theme_studios = tube_core_list_studios(8);
             <?php endif; ?>
         </div>
         <div>
-            <h3 class="mega-menu__heading"><?php esc_html_e('Browse by Studio', 'tube-theme'); ?></h3>
+            <h3 class="mega-menu__heading"><?php esc_html_e('Duyệt Theo Hãng Phim', 'tube-theme'); ?></h3>
             <?php if ([] === $tube_theme_studios) : ?>
-                <p class="mega-menu__empty"><?php esc_html_e('No studios yet.', 'tube-theme'); ?></p>
+                <p class="mega-menu__empty"><?php esc_html_e('Chưa có hãng phim nào.', 'tube-theme'); ?></p>
             <?php else : ?>
                 <ul class="mega-menu__list">
                     <?php foreach ($tube_theme_studios as $tube_theme_studio) : ?>

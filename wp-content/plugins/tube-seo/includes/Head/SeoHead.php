@@ -13,11 +13,13 @@ use Tube_Core\Content\Actor;
 use Tube_Core\Content\Studio;
 use Tube_Core\Plugin as Tube_Core_Plugin;
 use Tube_Player\Plugin as Tube_Player_Plugin;
+use Tube_Player\Video\ImageSize;
 use Tube_Search\Discovery\ArchivePage;
 use Tube_Search\Plugin as Tube_Search_Plugin;
 use Tube_Seo\JsonLd\BreadcrumbListBuilder;
 use Tube_Seo\JsonLd\CollectionPageBuilder;
 use Tube_Seo\JsonLd\VideoObjectBuilder;
+use Tube_Seo\JsonLd\WebSiteBuilder;
 use Tube_Seo\Meta\PageMeta;
 use Tube_Seo\Meta\PageMetaBuilder;
 use WP_Term;
@@ -59,6 +61,8 @@ final class SeoHead
         echo '<link rel="canonical" href="' . esc_url($meta->canonical) . "\">\n";
         echo '<meta name="robots" content="' . esc_attr($meta->robots) . "\">\n";
 
+        self::render_verification_tags();
+
         echo '<meta property="og:type" content="' . esc_attr($meta->og_type) . "\">\n";
         echo '<meta property="og:title" content="' . esc_attr($meta->title) . "\">\n";
         echo '<meta property="og:description" content="' . esc_attr($meta->description) . "\">\n";
@@ -80,6 +84,59 @@ final class SeoHead
             if (false !== $encoded) {
                 echo '<script type="application/ld+json">' . wp_json_encode($structure) . "</script>\n";
             }
+        }
+    }
+
+    /**
+     * The admin-configured Homepage SEO Title
+     * (`Tube_Seo\Admin\HomepageSeoSettings::OPTION_TITLE`), or `''` if
+     * unset — see self::resolve()'s `is_front_page()` branch for how
+     * this is used.
+     */
+    private static function homepage_custom_title(): string
+    {
+        $value = get_option('tube_seo_home_title', '');
+
+        return is_string($value) ? trim($value) : '';
+    }
+
+    /**
+     * The admin-configured Homepage Meta Description
+     * (`Tube_Seo\Admin\HomepageSeoSettings::OPTION_DESCRIPTION`), or
+     * `''` if unset — see self::resolve()'s `is_front_page()` branch for
+     * how this is used.
+     */
+    private static function homepage_custom_description(): string
+    {
+        $value = get_option('tube_seo_home_description', '');
+
+        return is_string($value) ? trim($value) : '';
+    }
+
+    /**
+     * Echo Google/Bing webmaster site-verification meta tags, site-wide,
+     * if and only if a real token has been configured — output nothing
+     * at all otherwise (2026-08-26 SEO audit P2: this plugin has no
+     * admin settings UI of any kind to surface these through yet, so
+     * they're plain `wp_options`, set via `wp option update` or
+     * `update_option()` until/unless a settings page is ever built; see
+     * `tube_seo_sitemap_urls_per_sitemap`/`tube_seo_thin_tag_threshold`
+     * for the same "filter/option now, UI later if ever needed" pattern
+     * already used elsewhere in this plugin). No token is ever invented
+     * or defaulted here.
+     */
+    private static function render_verification_tags(): void
+    {
+        $google = get_option('tube_seo_google_site_verification', '');
+
+        if (is_string($google) && '' !== $google) {
+            echo '<meta name="google-site-verification" content="' . esc_attr($google) . "\">\n";
+        }
+
+        $bing = get_option('tube_seo_bing_site_verification', '');
+
+        if (is_string($bing) && '' !== $bing) {
+            echo '<meta name="msvalidate.01" content="' . esc_attr($bing) . "\">\n";
         }
     }
 
@@ -130,16 +187,88 @@ final class SeoHead
             return $this->resolve_term_archive($site_name, 'Videos', 'Tag');
         }
 
-        $search_query = tube_search_current_query();
+        if ('' !== tube_search_current_query()) {
+            return $this->resolve_search($site_name);
+        }
 
-        if ('' !== $search_query) {
-            return $this->resolve_search($site_name, $search_query);
+        // Attachment pages, author archives, and date archives are WordPress
+        // core page types this project never deliberately built content for
+        // — noindexed rather than falling through to the generic branch
+        // below, which would otherwise index them as if they were curated
+        // pages (2026-08-26 SEO audit P1 finding).
+        if (is_attachment() || is_author() || is_date()) {
+            $title = get_the_title();
+            $title = '' === $title ? $site_name : "{$title} | {$site_name}";
+
+            return [PageMetaBuilder::for_low_value_archive($title, self::current_url()), []];
+        }
+
+        // The member system's frontend account page (`/tai-khoan/`,
+        // Tube_Members\Routing\AccountRouting) is a `template_include`-
+        // routed virtual page with no WP_Query post/page/archive of its
+        // own, so none of the branches above ever match it and it would
+        // otherwise fall through to the generic branch below as if it
+        // were curated, indexable content. It carries no content of its
+        // own to index (an account holder's private profile) but does
+        // link back to real videos — same `noindex, follow` shape
+        // `for_low_value_archive()` above already exists for, per Phase
+        // 32 of the member/comment system build (2026-08-26): "Frontend
+        // account/profile pages should generally: NOINDEX, FOLLOW."
+        // Read via a bare query var, not a `Tube_Members` class
+        // reference, so tube-seo has no compile-time dependency on
+        // tube-members and this check is simply inert (get_query_var()
+        // returns '') if that plugin is ever inactive.
+        $tube_members_account_var = get_query_var('tube_members_account');
+
+        if (is_string($tube_members_account_var) && '1' === $tube_members_account_var) {
+            return [PageMetaBuilder::for_low_value_archive($site_name, self::current_url()), []];
+        }
+
+        // Same reasoning, same bare-query-var/no-compile-time-dependency
+        // shape, for the email-verification landing page
+        // (`/xac-thuc-email/`, 2026-08-27 email-verification task,
+        // Phase 33) -- a one-time utility page a visitor only ever
+        // reaches via a link with a personal token in it, never a page
+        // worth indexing.
+        $tube_members_verify_email_var = get_query_var('tube_members_verify_email');
+
+        if (is_string($tube_members_verify_email_var) && '1' === $tube_members_verify_email_var) {
+            return [PageMetaBuilder::for_low_value_archive($site_name, self::current_url()), []];
         }
 
         if (is_front_page()) {
+            // 2026-08-26 SEO audit P2: WebSiteBuilder only — no Organization
+            // (this site has no real logo/social-profile/legal-entity data
+            // configured anywhere; `wp_options` has no site_icon, no custom
+            // logo, no social-profile options, confirmed by direct query, and
+            // fabricating any of those was explicitly ruled out), and no
+            // `potentialAction`/SearchAction (Google deprecated the Sitelinks
+            // Search Box feature it powered in November 2024 — see
+            // developers.google.com/search/blog/2024/10/sitelinks-search-box
+            // — and this project's real search URL is a path segment,
+            // `/search/{query}/`, not the `?s=` query-string shape most
+            // SearchAction examples assume).
+            //
+            // 2026-08-26 Homepage SEO controls: $home_title/$home_description
+            // (Admin\HomepageSeoSettings, "Tube SEO -> Homepage SEO") take
+            // priority over the site name/tagline when set, becoming the
+            // <title>/og:title/twitter:title and meta description/
+            // og:description/twitter:description alike — PageMeta is the
+            // single source SeoHead::render() reads every one of those from,
+            // so setting it here is the only change needed for all of them
+            // to move together, with no separate/duplicate output path.
+            // $site_name itself is untouched and still goes to WebSiteBuilder
+            // below: the SEO title is a distinct concept from the site's own
+            // entity name (see HomepageSeoSettings' own docblock).
+            $home_title       = self::homepage_custom_title();
+            $home_description = self::homepage_custom_description();
+
+            $title       = '' !== $home_title ? $home_title : $site_name;
+            $description = '' !== $home_description ? $home_description : get_bloginfo('description');
+
             return [
-                PageMetaBuilder::for_home($site_name, get_bloginfo('description'), home_url('/')),
-                [],
+                PageMetaBuilder::for_home($title, $description, home_url('/')),
+                [WebSiteBuilder::build($site_name, home_url('/'))],
             ];
         }
 
@@ -177,13 +306,26 @@ final class SeoHead
         $embed_url = '';
 
         if (null !== $metadata) {
-            $provider  = Tube_Player_Plugin::instance()->video_provider();
-            $image_url = $provider->thumbnail_url(
-                $metadata->cf_stream_uid,
-                $metadata->thumbnail_time_seconds,
-                1200,
-                630
-            );
+            $provider = Tube_Player_Plugin::instance()->video_provider();
+            // resolve_urls() resolves metadata->og_image_id (a WordPress
+            // attachment ID, ADR-0001), falling back to
+            // metadata->poster_image_id when no OG-image override has
+            // been set — see SitemapGenerator::build_entry()'s docblock
+            // for why (2026-08-26 SEO audit finding, P0). Still no
+            // Cloudflare Stream thumbnail fallback of any kind. Final
+            // fallback is WordPress's own native Featured Image
+            // (`_thumbnail_id`) — a real, legitimately-uploaded Media
+            // Library attachment some videos already have set even
+            // though neither tube-core image field was ever populated
+            // for them (2026-08-26 SEO audit P2 finding, investigated
+            // per-video, not assumed). null here means none of the
+            // three fields resolve to a real attachment;
+            // og:image/twitter:image/thumbnailUrl are omitted below, not
+            // fabricated.
+            $image_url = Tube_Player_Plugin::instance()->image_renderer()->resolve_urls(
+                $metadata->og_image_id ?? $metadata->poster_image_id ?? self::native_featured_image_id($video_id),
+                ImageSize::OgImage
+            )['src'];
             $embed_url = $provider->embed_url($metadata->cf_stream_uid);
         }
 
@@ -199,7 +341,7 @@ final class SeoHead
         $video_object = VideoObjectBuilder::build(
             $title,
             $description,
-            $image_url ?? '',
+            $image_url,
             $upload_date,
             $duration,
             $embed_url,
@@ -237,6 +379,13 @@ final class SeoHead
         $description = term_description($term->term_id);
         $description = '' === $description ? $term->name : wp_strip_all_tags($description);
 
+        // Free-text tags routinely land at 1-2 videos site-wide (2026-08-26
+        // SEO audit P1 finding) — thin/near-duplicate content, unlike
+        // categories, which are a small, deliberately-curated set. Only
+        // 'Tag' is gated; self::resolve_archive() (actor/studio) never
+        // passes this at all, and stays index-eligible regardless of size.
+        $force_noindex = 'Tag' === $column_label && $archive_page->total < self::thin_tag_threshold();
+
         return $this->build_archive_result(
             $site_name,
             $archive_label,
@@ -244,8 +393,23 @@ final class SeoHead
             $description,
             self::term_archive_url($term, $page),
             $page,
-            $archive_page
+            $archive_page,
+            $force_noindex
         );
+    }
+
+    /**
+     * The minimum total published-video count a tag needs to stay
+     * indexable — below this, every page of that tag's archive is
+     * `noindex, follow` (2026-08-26 SEO audit P1 finding). Filterable
+     * for the same reason `SitemapGenerator`'s own thresholds are.
+     */
+    private static function thin_tag_threshold(): int
+    {
+        // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.DynamicHooknameFound -- the literal, tube_seo_-prefixed filter name is right here as a string, not dynamic.
+        $value = apply_filters('tube_seo_thin_tag_threshold', 3);
+
+        return is_int($value) && $value >= 0 ? $value : 3;
     }
 
     /**
@@ -295,6 +459,7 @@ final class SeoHead
      * @param string      $canonical     This page's own (self-canonical) URL.
      * @param int         $page          The current page number.
      * @param ArchivePage $archive_page  The fetched listing page.
+     * @param bool        $force_noindex Whether to noindex regardless of this page's own item count (thin-tag rule).
      *
      * @return array{0: PageMeta, 1: list<array<string, mixed>>}
      */
@@ -305,7 +470,8 @@ final class SeoHead
         string $description,
         string $canonical,
         int $page,
-        ArchivePage $archive_page
+        ArchivePage $archive_page,
+        bool $force_noindex = false
     ): array {
         $meta = PageMetaBuilder::for_archive(
             $site_name,
@@ -314,14 +480,17 @@ final class SeoHead
             $description,
             $canonical,
             $page,
-            count($archive_page->items)
+            count($archive_page->items),
+            $force_noindex
         );
 
         $collection_page = CollectionPageBuilder::build($name, $canonical, $archive_page->total);
         $breadcrumb      = BreadcrumbListBuilder::build(
             [
                 [
-                    'name' => 'Home',
+                    // See self::video_breadcrumb_items()'s docblock comment for why this is
+                    // Vietnamese, matching the theme's own visible breadcrumb label.
+                    'name' => 'Trang chủ',
                     'url'  => home_url('/'),
                 ],
                 [
@@ -335,27 +504,32 @@ final class SeoHead
     }
 
     /**
-     * Resolve meta/JSON-LD for a search results page.
+     * Resolve meta/JSON-LD for a search results page. Resolves the query
+     * text itself (`tube_search_current_query_display()`), rather than
+     * taking it as a parameter — every use in this method (matching,
+     * `<title>`/meta description, JSON-LD name) needs real, decoded UTF-8
+     * text, so there is no raw-percent-encoded-text consumer here for a
+     * caller to hand in instead.
      *
      * @param string $site_name The site's name.
-     * @param string $query     The raw search query text.
      *
      * @return array{0: PageMeta, 1: list<array<string, mixed>>}
      */
-    private function resolve_search(string $site_name, string $query): array
+    private function resolve_search(string $site_name): array
     {
-        $page   = self::current_page();
-        $result = tube_search_query(
+        $query_display = tube_search_current_query_display();
+        $page          = self::current_page();
+        $result        = tube_search_query(
             [
-                'q'    => $query,
+                'q'    => $query_display,
                 'page' => $page,
             ]
         );
 
-        $meta = PageMetaBuilder::for_search($site_name, $query, self::current_url(), count($result));
+        $meta = PageMetaBuilder::for_search($site_name, $query_display, self::current_url(), count($result));
 
         $collection_page = CollectionPageBuilder::build(
-            "Search: {$query}",
+            "Search: {$query_display}",
             self::current_url(),
             count($result)
         );
@@ -376,7 +550,13 @@ final class SeoHead
     {
         $items = [
             [
-                'name' => 'Home',
+                // Matches the theme's own visible breadcrumb label
+                // (template-parts/breadcrumbs.php) — this JSON-LD
+                // BreadcrumbList previously hardcoded the English
+                // "Home" while the page itself showed "Trang chủ", a
+                // real schema/visible-content mismatch (2026-08-26 SEO
+                // audit finding, P1).
+                'name' => 'Trang chủ',
                 'url'  => home_url('/'),
             ],
         ];
@@ -412,7 +592,18 @@ final class SeoHead
         global $wp;
         /** @var \WP $wp */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
 
-        return home_url(add_query_arg([], $wp->request));
+        // user_trailingslashit(), not a bare home_url() concatenation:
+        // `$wp->request` (the matched-rewrite-rule request string) never
+        // carries a trailing slash, so every URL built from it directly
+        // came out missing one — a real, live canonical/OG-url/
+        // CollectionPage-url mismatch found on the search page
+        // (2026-08-26 SEO audit P2 finding): WordPress's own
+        // redirect_canonical() 301s a slash-less /search/{q} request to
+        // /search/{q}/, but this method's canonical said /search/{q} —
+        // pointing at a URL that isn't the one WordPress itself treats as
+        // canonical. user_trailingslashit() matches this site's actual
+        // configured permalink convention rather than assuming one.
+        return home_url(user_trailingslashit(add_query_arg([], $wp->request)));
     }
 
     /**
@@ -437,5 +628,19 @@ final class SeoHead
         $paged = get_query_var('paged');
 
         return is_numeric($paged) && (int) $paged > 0 ? (int) $paged : 1;
+    }
+
+    /**
+     * This video's WordPress native Featured Image attachment ID, if
+     * one is set — the final image fallback (see self::resolve_video()'s
+     * docblock comment for why).
+     *
+     * @param int $video_id The video post ID.
+     */
+    private static function native_featured_image_id(int $video_id): ?int
+    {
+        $thumbnail_id = get_post_thumbnail_id($video_id);
+
+        return false === $thumbnail_id || 0 === $thumbnail_id ? null : (int) $thumbnail_id;
     }
 }

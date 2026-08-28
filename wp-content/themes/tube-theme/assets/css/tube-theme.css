@@ -22,7 +22,15 @@
     --color-surface-hover: #202737;
     --color-text: #e8eaed;
     --color-text-muted: #9aa2b1;
-    --color-text-faint: #6b7280;
+    /* 2026-08-28 typography pass: was #6b7280 (4.0:1 against --color-bg,
+       3.7:1 against --color-surface -- both fail WCAG AA's 4.5:1 for
+       normal text). Breadcrumbs, footer eyebrow headings, and comment
+       timestamps all use this token at small sizes, so the old value
+       read as genuinely faint, not just "intentionally secondary."
+       #828a9c clears 5.5:1 / 5.1:1 respectively while staying visibly
+       a step below --color-text-muted's own 7.5:1 -- same 3-tier
+       hierarchy, just a real color instead of a failing one. */
+    --color-text-faint: #828a9c;
     --color-border: #262c3b;
     --color-border-strong: #333c4f;
     --color-accent: #ff3d5a;
@@ -49,6 +57,28 @@
 
     --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 
+    /* Type scale (2026-08-28) -- a small maintainable set, not a size
+       per component. Wired into the components this task actually
+       touches (section headings, card/video titles, description);
+       existing untouched components (chips, hero, nav) keep their own
+       already-tuned literal values rather than being force-migrated
+       for no visual change. Every weight here is a real, commonly-
+       shipped step (400/500/600/700/800) -- `--font-sans`'s system-font
+       stack does not reliably expose the in-between values (450/650/750
+       etc.) some variable fonts support, so those are deliberately not
+       used anywhere in this codebase (audited: none exist). */
+    --font-size-xs: 0.75rem;   /* 12px -- smallest secondary/meta text */
+    --font-size-sm: 0.875rem;  /* 14px -- compact body / secondary copy */
+    --font-size-md: 1rem;      /* 16px -- base body copy */
+    --font-size-lg: 1.25rem;   /* 20px -- card/subsection headings */
+    --font-size-xl: 1.75rem;   /* 28px -- major section headings, desktop ceiling */
+
+    --font-weight-normal: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    --font-weight-bold: 700;
+    --font-weight-black: 800;
+
     --transition-fast: 150ms ease;
     --transition-base: 250ms ease;
 
@@ -60,6 +90,40 @@
     --z-mobile-nav: 120;
 
     --container-max: 1400px;
+
+    /* Mobile-density tokens (2026-08-27 compact-mobile pass) -- shared by
+       every small square control (icon buttons, chips, tag chips, sort/
+       action buttons) so their height/radius/font move together instead
+       of as independent magic numbers. Desktop value here is a no-op
+       (equal to what each control already hardcodes); the ≤768px media
+       query below is what actually redefines these for mobile, and
+       every consumer below just reads var(--mobile-*, <its own literal
+       fallback>) so nothing breaks if a token is ever removed. */
+    --mobile-control-height: 36px;
+    --mobile-radius: 7px;
+    --mobile-font-xs: 12px;
+    --mobile-font-sm: 13px;
+    --mobile-font-md: 14px;
+    --mobile-space-1: 4px;
+    --mobile-space-2: 8px;
+    --mobile-space-3: 12px;
+}
+
+/* Redefines the tokens above for ≤768px only -- every rule that already
+   reads var(--mobile-*, ...) throughout this file switches to these
+   compact values automatically at that breakpoint; desktop widths never
+   see this block, so nothing above 768px moves (Part 19). */
+@media (max-width: 768px) {
+    :root {
+        --mobile-control-height: 33px;
+        --mobile-radius: 6px;
+        --mobile-font-xs: 11px;
+        --mobile-font-sm: 12px;
+        --mobile-font-md: 13px;
+        --mobile-space-1: 4px;
+        --mobile-space-2: 6px;
+        --mobile-space-3: 10px;
+    }
 }
 
 /* ==========================================================================
@@ -74,6 +138,14 @@
 
 html {
     color-scheme: dark;
+    /* Mobile Safari/Chrome auto-inflate font sizes on rotation/zoom
+       heuristics by default ("text-size-adjust: auto") -- pinned to 100%
+       so this theme's own px/rem values are what actually renders,
+       instead of the browser silently scaling them up. This does NOT
+       touch pinch-to-zoom (that's the viewport meta tag, untouched) --
+       purely stops the browser's separate font-inflation behavior. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
 }
 
 body {
@@ -171,13 +243,13 @@ ol {
 }
 
 .site-main {
-    padding: var(--space-6) var(--space-4) var(--space-16);
+    padding: var(--space-4) var(--space-4) var(--space-16);
     max-width: var(--container-max);
     margin: 0 auto;
 }
 
 .section {
-    margin-bottom: var(--space-10);
+    margin-bottom: var(--space-5);
 }
 
 .section-heading-row {
@@ -190,7 +262,15 @@ ol {
 
 .section-heading {
     margin: 0;
-    font-size: clamp(1.1rem, 1rem + 0.6vw, 1.5rem);
+    padding-left: 9px;
+    border-left: 3px solid var(--color-accent);
+    /* 2026-08-28 typography pass: was clamp(15px..22px) -- measured
+       18.7px @390 / 20.8px @1440, under this task's own 18-21 mobile /
+       24-30 desktop authority target. New curve lands ~19.9px @390
+       (mobile density preserved) up to a 28px ceiling by ~1440. */
+    font-size: clamp(1.2rem, 1rem + 1vw, 1.75rem);
+    font-weight: var(--font-weight-bold);
+    line-height: 1.2;
 }
 
 .section-view-all {
@@ -215,8 +295,12 @@ ol {
     z-index: var(--z-header);
     display: flex;
     align-items: center;
-    gap: var(--space-4);
-    padding: var(--space-3) var(--space-4);
+    gap: var(--space-3);
+    /* 7px vertical pairs with the 36px icon buttons to land the whole
+       header at ~50px total (target: ~48-52px); 11px horizontal is
+       likewise a specific value, not a scale token, matching the
+       10-12px target directly rather than the nearest --space-* step. */
+    padding: 7px 11px;
     background: rgba(11, 14, 20, 0.92);
     backdrop-filter: blur(8px);
     border-bottom: 1px solid var(--color-border);
@@ -234,16 +318,49 @@ ol {
 .site-header__home {
     flex-shrink: 0;
     font-weight: 800;
-    font-size: 1.35rem;
+    font-size: 1.375rem;
+    line-height: 1;
     letter-spacing: -0.02em;
 }
 
-.site-header__home span {
+/* Was `.site-header__home span` (any span descendant) -- narrowed to
+   its own class (2026-08-28, header logo switcher) so the new
+   `.site-brand__text` wrapper span the text-brand slot now also uses
+   can't accidentally match it too. */
+.site-brand__accent {
     color: var(--color-accent);
 }
 
+/* Header logo mode (2026-08-28) -- `.site-header__home`'s own
+   `flex-shrink: 0` (above) already keeps this from being squashed by
+   the row's flex layout; these caps are what stop an admin-uploaded
+   wide/tall logo from squeezing `.site-header__search` (`flex: 1 1 0`,
+   the row's only flexible element) below a usable width. Desktop
+   values apply by default; the ≤1023px block further down tightens
+   them for the mobile/tablet row where search space is scarcer. */
+.site-brand__logo {
+    display: flex;
+    align-items: center;
+}
+
+.site-brand__logo img {
+    display: block;
+    width: auto;
+    height: auto;
+    max-height: 37px;
+    max-width: 200px;
+    object-fit: contain;
+}
+
+/* 2026-08-28: visible at every width now (was `display:none` below
+   900px, revealed only by the old `@media (min-width: 900px)` rule) --
+   this is mobile's own row-2 discovery/nav strip too, not just
+   desktop's inline nav; see the `@media (max-width: 1023px)` rule below
+   that gives it its compact, horizontally-scrolling mobile presentation
+   (order/flex-basis/sizing), which is the only thing that differs
+   between the two now. */
 .site-nav {
-    display: none;
+    display: flex;
     align-items: center;
     gap: var(--space-1);
 }
@@ -277,8 +394,15 @@ ol {
     fill: currentColor;
 }
 
+/* 2026-08-28: visible at every width now -- was `display:none` below
+   900px, with a separate icon-triggered overlay standing in for it on
+   mobile (both removed: search is now the same real, always-visible
+   `<input>` at every width, per the explicit "search must not collapse
+   to icon-only" requirement). The `@media (max-width: 1023px)` rule
+   below resizes it for mobile/tablet; this base rule is what desktop
+   (≥1024px, unchanged) still uses as-is. */
 .site-header__search {
-    display: none;
+    display: flex;
     align-items: center;
     flex: 1 1 auto;
     max-width: 420px;
@@ -312,6 +436,18 @@ ol {
     outline: none;
 }
 
+/* 2026-08-28 typography pass: no rule existed for this at all, so the
+   placeholder rendered in Chrome's UA-default gray (rgb(117,117,117) --
+   measured live), which is only 3.9:1 against this field's own
+   `--color-surface` background and fails WCAG AA's 4.5:1. Explicit
+   `--color-text-muted` clears 7:1 here -- readability without touching
+   the field's own size (A9: "improve readability without increasing
+   control size"). */
+.site-header__search input[type="text"]::placeholder {
+    color: var(--color-text-muted);
+    opacity: 1;
+}
+
 .site-header__search button {
     display: flex;
     align-items: center;
@@ -336,26 +472,6 @@ ol {
     fill: none;
     stroke: currentColor;
     stroke-width: 2;
-}
-
-.mobile-nav-toggle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    margin-left: auto;
-    background: transparent;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    color: var(--color-text);
-    cursor: pointer;
-}
-
-.mobile-nav-toggle svg {
-    width: 20px;
-    height: 20px;
-    fill: currentColor;
 }
 
 /* Mega menu: CSS-only reveal for pointer/keyboard, JS adds
@@ -424,80 +540,20 @@ ol {
     color: var(--color-text-faint);
 }
 
-/* Mobile off-canvas nav panel (JS-controlled via `is-open`). */
-.mobile-nav {
-    position: fixed;
-    inset: 0;
-    z-index: var(--z-mobile-nav);
-    display: none;
-    background: var(--color-bg);
-    overflow-y: auto;
-    padding: var(--space-4);
-}
-
-.mobile-nav.is-open {
-    display: block;
-}
-
-.mobile-nav__header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: var(--space-6);
-}
-
-.mobile-nav__close {
-    width: 40px;
-    height: 40px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    color: var(--color-text);
-    cursor: pointer;
-}
-
-.mobile-nav__close svg {
-    width: 18px;
-    height: 18px;
-    fill: currentColor;
-}
-
-.mobile-nav__section {
-    margin-bottom: var(--space-6);
-}
-
-.mobile-nav__section-heading {
-    margin: 0 0 var(--space-2);
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--color-text-faint);
-}
-
-.mobile-nav__link {
-    display: block;
-    padding: var(--space-3) 0;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--color-text);
-    border-bottom: 1px solid var(--color-border);
-}
-
 /* ==========================================================================
    5. Hero
    ========================================================================== */
 
 .hero {
     position: relative;
-    margin-bottom: var(--space-10);
+    margin-bottom: var(--space-6);
     border-radius: var(--radius-lg);
     overflow: hidden;
     background: var(--color-surface);
-    min-height: clamp(260px, 40vw, 460px);
+    /* 180px floor on mobile (down from 260px) -- Part N's "show the start
+       of Trending in the first viewport" requirement directly depends on
+       the hero not eating most of a ~700-800px phone viewport. */
+    min-height: clamp(180px, 45vw, 460px);
     display: flex;
     align-items: flex-end;
 }
@@ -524,7 +580,7 @@ ol {
 .hero__content {
     position: relative;
     z-index: 2;
-    padding: var(--space-8);
+    padding: var(--space-4);
     max-width: 720px;
 }
 
@@ -532,36 +588,45 @@ ol {
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
-    padding: var(--space-1) var(--space-3);
-    margin-bottom: var(--space-4);
+    padding: 6px var(--space-2);
+    margin-bottom: var(--space-2);
     background: var(--color-accent);
     color: var(--color-accent-contrast);
     font-size: 0.75rem;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-sm);
 }
 
 .hero__title {
-    margin: 0 0 var(--space-3);
-    font-size: clamp(1.5rem, 1.1rem + 2vw, 2.75rem);
+    margin: 0 0 var(--space-2);
+    /* Size/clamp intentionally untouched -- the approved compact mobile
+       hero dimensions stay exactly as they are (A8/A18). Weight bumped
+       from the inherited h1-h4 700 to 800 instead -- more presence
+       through confidence, not size, the same trade this task asks for. */
+    font-size: clamp(1.25rem, 1rem + 1.5vw, 2rem);
+    font-weight: var(--font-weight-black);
+    line-height: 1.25;
 }
 
 .hero__meta {
-    margin: 0 0 var(--space-5);
+    margin: 0 0 var(--space-3);
     color: var(--color-text-muted);
+    font-size: 0.8125rem;
 }
 
 .hero__cta {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-3) var(--space-6);
+    gap: 6px;
+    height: 36px;
+    padding: 0 var(--space-4);
     background: var(--color-accent);
     color: var(--color-accent-contrast);
-    font-weight: 700;
-    border-radius: var(--radius-full);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    border-radius: var(--radius-md);
     transition: background-color var(--transition-fast), transform var(--transition-fast);
 }
 
@@ -593,6 +658,34 @@ ol {
     background: var(--color-surface);
     aspect-ratio: 16 / 9;
     margin-bottom: var(--space-2);
+}
+
+.video-card__thumb--empty {
+    background: linear-gradient(155deg, var(--color-surface-elevated) 0%, var(--color-surface) 100%);
+}
+
+.video-card__thumb-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    color: var(--color-text-faint);
+}
+
+.video-card__thumb-placeholder svg {
+    width: 30%;
+    max-width: 44px;
+    fill: currentColor;
+}
+
+.video-card__thumb-mark {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    opacity: 0.6;
 }
 
 .video-card__thumb img {
@@ -659,8 +752,15 @@ ol {
 
 .video-card__title {
     margin: 0 0 var(--space-1);
-    font-size: 0.9rem;
-    font-weight: 600;
+    /* 2026-08-28 typography pass: was 0.9rem/14.4px, under this task's
+       own 15-17px desktop target and visually thin for a scannable
+       card title. Mobile 2-col size is untouched (still --mobile-font-md,
+       already inside the 12.5-14px mobile target) -- only the desktop
+       size and the shared weight move here, weight applying at every
+       breakpoint since the ≤1023px override below only touches size/
+       line-height, never weight. */
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-bold);
     line-height: 1.35;
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -764,17 +864,44 @@ ol {
 }
 
 .breadcrumbs {
-    margin-bottom: var(--space-4);
-    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    margin: 9px 0;
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: 0.75rem;
     color: var(--color-text-faint);
 }
 
 .breadcrumbs a {
+    flex-shrink: 0;
     color: var(--color-text-faint);
 }
 
 .breadcrumbs a:hover {
     color: var(--color-accent);
+}
+
+.breadcrumbs__home {
+    display: inline-flex;
+}
+
+.breadcrumbs__home svg {
+    width: 15px;
+    height: 15px;
+}
+
+.breadcrumbs__sep {
+    flex-shrink: 0;
+    margin: 0 var(--space-2);
+    color: var(--color-text-faint);
+}
+
+.breadcrumbs__current {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
 }
 
 .empty-state {
@@ -850,6 +977,57 @@ ol {
     border-color: var(--color-accent);
     background: var(--color-surface-elevated);
     transform: translateY(-2px);
+}
+
+/* Compact category grid (Part A, 2026-08-28) -- the desktop rules above
+   (auto-fill 140px tiles, 64px-tall cards) stay completely untouched
+   above 1023px; this only tightens the same `.category-tiles`/
+   `.category-tile` pair for phone/tablet, where the desktop card size
+   wasted a full screen's worth of vertical space for ~4 categories.
+   Explicit `repeat(2, ...)`/`repeat(3, ...)` (not a smaller auto-fill
+   minmax) per the task's own preferred implementation -- deterministic
+   column counts rather than however many 140px tiles happen to fit. */
+@media (max-width: 1023px) {
+    .category-tiles {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+
+    .category-tile {
+        min-width: 0;
+        width: 100%;
+        min-height: 50px;
+        padding: 10px 12px;
+        font-size: 14px;
+        line-height: 1.25;
+    }
+
+    /* Neutralize the desktop `:hover` transform here -- unguarded
+       `:hover` also fires (and sticks) on a touchscreen tap, which is
+       exactly the "no sticky hover artifacts" the task's own A7 asks
+       to avoid. Re-enabled below only for real hover-capable pointers
+       (tablets with a mouse/trackpad). */
+    .category-tile:hover {
+        transform: none;
+    }
+
+    .category-tile:active {
+        border-color: var(--color-accent);
+        background: var(--color-surface-elevated);
+    }
+}
+
+@media (max-width: 1023px) and (hover: hover) and (pointer: fine) {
+    .category-tile:hover {
+        transform: translateY(-1px);
+    }
+}
+
+/* Tablet: one more column than phone, per Part A2. */
+@media (min-width: 600px) and (max-width: 1023px) {
+    .category-tiles {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
 }
 
 /* ==========================================================================
@@ -978,53 +1156,320 @@ ol {
    11. Single video
    ========================================================================== */
 
-.video-single {
-    margin-bottom: var(--space-10);
+/* Mobile-first watch-page layout: a plain block by default (the DOM
+   order below is the mobile reading order), a two-column grid at the
+   desktop breakpoint (see section 14's responsive rules). */
+.watch-layout {
+    display: block;
 }
 
-.video-single .tube-player {
-    border-radius: var(--radius-lg);
-    margin-bottom: var(--space-5);
+.watch-layout__main {
+    min-width: 0;
+}
+
+/* 2026-08-28: "Video Liên Quan" used to be display:none below 1024px
+   ("mobile must show exactly one recommendation section," to avoid
+   duplicating the sidebar's own related-video list) -- reversed per
+   explicit direction: mobile should preserve desktop's full page
+   structure, not hide sections. This was always safe to show
+   unconditionally: `single-video.php` already splits ONE
+   `tube_search_related_videos()` result into disjoint array slices
+   before either section ever renders (`related_aside = related[0:5]`,
+   `related_more = related[5:17]`) -- the two sections have never been
+   able to share a video, on any width, so no query change was needed
+   to restore this, only removing the CSS that hid it. */
+.watch-layout__related-main {
+    margin-bottom: 22px;
+}
+
+/* Comments now sit between the video's own info (article, which already
+   carries the margin-bottom below) and Related/Trending -- this is the
+   "after" gap, unscoped so it applies on mobile too. Collapses
+   harmlessly with related-main's own 28px margin-top on desktop rather
+   than stacking. */
+.watch-layout__comments {
+    margin-bottom: 28px;
+}
+
+.video-single {
+    margin-bottom: var(--space-6);
+}
+
+/* Player presentation: rounded corners + a subtle bottom-up gradient
+   for legibility (poster brightness varies per video) — the click-to-
+   load player itself (tube-player.css/tube-player.js) is untouched;
+   this only styles the plugin's own existing markup from the theme, the
+   same layering `.video-single .tube-player`'s pre-existing
+   border-radius rule already established. */
+.video-player-wrap {
+    position: relative;
+    border-radius: 9px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+.video-player-wrap .tube-player {
+    border-radius: 0;
+}
+
+.video-player-wrap .tube-player::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, 0.55) 100%);
+    pointer-events: none;
+}
+
+/* Hidden once the player activates (data-tube-player-active is set by
+   tube-player.js's own, unmodified activate()) -- pure CSS, no changes
+   to that script. */
+.video-player-wrap .tube-player[data-tube-player-active]::after {
+    display: none;
+}
+
+.video-player-wrap__duration {
+    position: absolute;
+    right: var(--space-3);
+    bottom: var(--space-3);
+    z-index: 1;
+    padding: 2px 8px;
+    background: rgba(0, 0, 0, 0.75);
+    border-radius: var(--radius-sm);
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+}
+
+.video-player-wrap .tube-player[data-tube-player-active] ~ .video-player-wrap__duration {
+    display: none;
 }
 
 .video-single__title {
-    margin: 0 0 var(--space-2);
+    margin: 0 0 8px;
+    /* 2026-08-28 typography pass: was clamp(20px..24px) -- measured
+       20px @390 (already inside this task's 18-21 mobile target, so the
+       floor is unchanged) / 24px @1440 (the *bottom* of the 24-30
+       desktop target, not landing anywhere inside it). New ceiling
+       reaches 28px by 1440 while the ~390px value stays ~20px. */
+    font-size: clamp(1.25rem, 1.06rem + 0.76vw, 1.75rem);
+    line-height: 1.25;
+    font-weight: var(--font-weight-black);
 }
 
 .video-single__meta {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-2) var(--space-4);
-    margin-bottom: var(--space-4);
+    align-items: center;
+    gap: 4px var(--space-3);
+    margin-bottom: 12px;
     color: var(--color-text-muted);
-    font-size: 0.9rem;
+    font-size: 0.8125rem;
 }
 
-.video-single__description {
-    max-width: 80ch;
-    margin-bottom: var(--space-4);
-    color: var(--color-text-muted);
+.video-single__meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
 }
 
-.video-single__terms {
+.video-single__meta-item svg {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+}
+
+.video-single__meta-item:not(:last-child)::after,
+.video-single__meta-category::before {
+    content: '\2022';
+    margin-left: var(--space-3);
+    color: var(--color-text-faint);
+}
+
+.video-single__meta-category {
+    color: var(--color-text-muted);
+    font-weight: 600;
+}
+
+.video-single__meta-category:hover {
+    color: var(--color-accent);
+}
+
+.video-single__tags-block {
+    margin-top: var(--space-5);
+}
+
+.video-single__tags-heading {
+    margin: 0 0 8px;
+    padding-left: 9px;
+    border-left: 3px solid var(--color-accent);
+    font-size: 0.9375rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--color-text);
+}
+
+.tag-chip--lg {
+    /* Horizontal-only override -- vertical padding stays .tag-chip's own
+       6px so height keeps hugging text within the ~32-36px target even
+       at this larger font-size, rather than a padding shorthand
+       clobbering it back open. */
+    padding-left: var(--space-3);
+    padding-right: var(--space-3);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+/* ---- Action bar (Like / Save / Share) ---------------------------- */
+
+.video-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-2);
-    margin: 0;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: var(--space-4);
 }
 
-.video-single__terms a {
-    padding: var(--space-1) var(--space-3);
+.video-actions__btn {
+    display: inline-flex;
+    align-items: center;
+    /* min-width: 0 lets a button shrink below its content's intrinsic
+       width inside the flex row instead of forcing the row wider than
+       the viewport -- flex-wrap above is the primary overflow guard
+       (Part H), this is the secondary one for a very long count. */
+    min-width: 0;
+    gap: 5px;
+    /* 38px sits inside BOTH this task's own desktop (38-42px) and
+       mobile (36-40px) target ranges at once, so one value covers both
+       without a separate breakpoint override; 7px radius matches the
+       same request (2026-08-27 pill-regression fix). */
+    height: 38px;
+    padding: 0 12px;
     background: var(--color-surface);
-    border-radius: var(--radius-full);
-    font-size: 0.8rem;
+    border: 1px solid var(--color-border);
+    border-radius: 7px;
     color: var(--color-text-muted);
-    transition: color var(--transition-fast), background-color var(--transition-fast);
+    font-weight: 600;
+    font-size: 0.8125rem;
+    cursor: pointer;
+    transition: color var(--transition-fast), background-color var(--transition-fast),
+        border-color var(--transition-fast), transform 150ms ease;
 }
 
-.video-single__terms a:hover {
+.video-actions__btn:hover {
     color: var(--color-text);
+    border-color: var(--color-border-strong);
+}
+
+.video-actions__btn:active {
+    transform: scale(0.96);
+}
+
+.video-actions__btn.is-active {
+    color: var(--color-accent-contrast);
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+}
+
+.video-actions__btn.is-active .video-actions__icon path {
+    fill: currentColor;
+}
+
+.video-actions__icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.video-actions__count {
+    color: inherit;
+    opacity: 0.85;
+}
+
+.video-actions__toast {
+    position: fixed;
+    left: 50%;
+    bottom: var(--space-8);
+    z-index: var(--z-mobile-nav);
+    padding: var(--space-2) var(--space-5);
     background: var(--color-surface-elevated);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-elevated);
+    color: var(--color-text);
+    font-size: 0.875rem;
+    font-weight: 600;
+    opacity: 0;
+    visibility: hidden;
+    transform: translate(-50%, 8px);
+    transition: opacity var(--transition-base), transform var(--transition-base);
+}
+
+.video-actions__toast.is-visible {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, 0);
+}
+
+/* ---- Description (collapsible) ------------------------------------ */
+
+.video-description {
+    max-width: 80ch;
+    margin-bottom: var(--space-4);
+}
+
+.video-description__heading {
+    margin: 0 0 8px;
+    padding-left: 9px;
+    border-left: 3px solid var(--color-accent);
+    /* Was 15px -- once the body below moves to 15px too, size alone no
+       longer separates them; 16px + the existing 700 weight keeps a
+       clear heading/body distinction at every width (no mobile
+       override exists for this heading, so this is the one value for
+       both). */
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-bold);
+    line-height: 1.2;
+    color: var(--color-text);
+}
+
+.video-description__content {
+    max-height: 4.6em;
+    overflow: hidden;
+    color: var(--color-text-muted);
+    /* Was 0.9rem/14.4px, under this task's 15-16px desktop target; the
+       ≤1023px override below (13.5px) already sat inside the 13-14px
+       mobile target and is untouched. */
+    font-size: 0.9375rem;
+    line-height: 1.6;
+}
+
+.video-description__content p:last-child {
+    margin-bottom: 0;
+}
+
+.video-description.is-expanded .video-description__content {
+    max-height: none;
+}
+
+.video-description__toggle {
+    margin-top: var(--space-2);
+    padding: 0;
+    background: transparent;
+    border: 0;
+    color: var(--color-accent);
+    font-weight: 600;
+    font-size: 0.875rem;
+    cursor: pointer;
+}
+
+.video-description__toggle:hover {
+    color: var(--color-accent-hover);
+}
+
+.video-description__toggle[hidden] {
+    display: none;
 }
 
 /* ==========================================================================
@@ -1032,8 +1477,9 @@ ol {
    ========================================================================== */
 
 .site-footer {
-    border-top: 1px solid var(--color-border);
-    padding: var(--space-10) var(--space-4);
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border-strong);
+    padding: var(--space-12) var(--space-4) var(--space-8);
     color: var(--color-text-muted);
 }
 
@@ -1042,17 +1488,81 @@ ol {
     margin: 0 auto;
     display: flex;
     flex-direction: column;
-    gap: var(--space-6);
+    gap: var(--space-8);
 }
 
 .site-footer__grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: var(--space-6);
+    grid-template-columns: minmax(220px, 1.4fr) repeat(auto-fit, minmax(140px, 1fr));
+    gap: var(--space-8);
+}
+
+.site-footer__brand {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-width: 0;
+}
+
+.site-footer__brand-link {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    font-weight: 800;
+    font-size: 1.375rem;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--color-text);
+}
+
+.site-footer__brand-link span {
+    color: var(--color-accent);
+}
+
+.site-footer__logo {
+    display: block;
+    max-width: 160px;
+    height: auto;
+}
+
+.site-footer__description {
+    margin: 0;
+    max-width: 32ch;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: var(--color-text-muted);
+}
+
+.site-footer__social {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.site-footer__social-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-md);
+    background: var(--color-surface-elevated);
+    color: var(--color-text-muted);
+    transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.site-footer__social-link:hover,
+.site-footer__social-link:focus-visible {
+    color: var(--color-accent-contrast);
+    background: var(--color-accent);
+}
+
+.site-footer__column {
+    min-width: 0;
 }
 
 .site-footer__heading {
-    margin: 0 0 var(--space-2);
+    margin: 0 0 var(--space-3);
     font-size: 0.75rem;
     font-weight: 700;
     letter-spacing: 0.06em;
@@ -1064,14 +1574,61 @@ ol {
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
 }
 
 .site-footer__list a {
     font-size: 0.875rem;
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-muted);
+    transition: color var(--transition-fast);
+}
+
+.site-footer__list a:hover,
+.site-footer__list a:focus-visible {
+    color: var(--color-accent);
+}
+
+/* Custom footer column content (Part B) -- matches `.site-footer__list`'s
+   own link color/size/hover exactly, but for arbitrary admin-typed
+   `<p>`/`<a>`/`<strong>`/`<ul>` rather than a fixed `<li>` menu markup,
+   with browser-default paragraph/list spacing collapsed to the same
+   compact rhythm the menu list already uses. */
+.site-footer__custom-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    font-size: 0.875rem;
     color: var(--color-text-muted);
 }
 
-.site-footer__list a:hover {
+.site-footer__custom-content p {
+    margin: 0;
+}
+
+.site-footer__custom-content ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.site-footer__custom-content li {
+    margin: 0;
+}
+
+.site-footer__custom-content a {
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-muted);
+    transition: color var(--transition-fast);
+}
+
+.site-footer__custom-content a:hover,
+.site-footer__custom-content a:focus-visible {
     color: var(--color-accent);
 }
 
@@ -1082,8 +1639,601 @@ ol {
     text-align: center;
 }
 
+.site-footer__bottom p {
+    margin: 0;
+}
+
+@media (max-width: 900px) {
+    .site-footer__grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .site-footer__brand {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 480px) {
+    .site-footer {
+        padding: var(--space-8) var(--space-4) var(--space-6);
+    }
+
+    .site-footer__inner {
+        gap: var(--space-6);
+    }
+
+    .site-footer__grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--space-6);
+        text-align: center;
+    }
+
+    .site-footer__brand {
+        grid-column: 1 / -1;
+        align-items: center;
+    }
+
+    .site-footer__description {
+        max-width: none;
+    }
+
+    .site-footer__heading {
+        margin-bottom: var(--space-2);
+    }
+}
+
 /* ==========================================================================
-   13. Responsive breakpoints
+   13. Discovery chips, tags, homepage hierarchy
+   ========================================================================== */
+
+.discovery-chips {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    /* 5px vertical -- pairs with the 32px-tall chips below for a
+       ~42-44px total row height (target: ~42-46px). */
+    padding: 5px var(--space-3);
+    margin: 0 auto var(--space-4);
+    max-width: var(--container-max);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+
+.discovery-chips::-webkit-scrollbar {
+    display: none;
+}
+
+/* 2026-08-28 chip polish: `display: inline-flex` + `align-items/
+   justify-content: center` is the actual fix for a real, measured
+   vertical-centering bug -- this was plain `display: block` (an <a>'s
+   own default) with an explicit `height` set by the mobile density
+   pass (25px) but only *horizontal* padding. A block element doesn't
+   distribute leftover height evenly around its line box the way a flex
+   container does; verified live via getBoundingClientRect() on the
+   text content vs. the chip box: text sat ~4px above the chip's true
+   vertical center at 390px (desktop's own unset-height, padding-driven
+   layout only drifted ~1px, which is why this went unnoticed there).
+   The explicit `height: 32px` below exists ONLY to keep desktop's own
+   box pixel-identical to before this fix -- a flex container's own
+   auto-height for a single line of text is computed from tighter font
+   intrinsic metrics than a block element's full CSS line-height is
+   (verified live: switching to `inline-flex` alone, with no explicit
+   height, shrank desktop's previously-32px chip to 30px even though
+   nothing about its padding/font-size changed). Mobile's own `height:
+   25px` media-query override further down still wins there as before
+   (same specificity, later in source order); this 32px is what
+   desktop is actually left with once that override no longer applies. */
+.discovery-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    height: 32px;
+    /* 5px vertical / 10px horizontal: not scale tokens -- paired with the
+       0.8125rem label and 1px border to land at ~30-32px (target:
+       ~30-34px), with padding-inline matching the 9-11px target directly. */
+    padding: 5px 10px;
+    border-radius: 6px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    /* Subtle inner top highlight (Part 6's own "tasteful depth," not a
+       glow) -- reads as a faint bevel on every chip, including the
+       flat-tint fallback below, not just the gradient tiers. */
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    transition: color var(--transition-fast), background-color var(--transition-fast),
+        border-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.discovery-chip:hover,
+.discovery-chip:focus-visible {
+    color: var(--color-text);
+    background: var(--color-surface-hover);
+    border-color: var(--color-border-strong);
+}
+
+/* `(hover: hover)` -- a touchscreen (this component's primary audience,
+   per this whole redesign) has no real hover; without this guard, a
+   tapped chip's :hover state can stay visually "stuck" active after the
+   finger lifts on some mobile browsers until the next unrelated tap
+   (Part 7's own explicit "no sticky hover artifacts"). Scoped to just
+   the lift/brighten motion, not color -- the color hover rules above
+   stay universal since a mobile Safari/Chrome momentary tap-highlight
+   is harmless there. */
+@media (hover: hover) and (pointer: fine) {
+    .discovery-chip:hover {
+        transform: translateY(-1px);
+    }
+}
+
+/* 2026-08-28 chip polish: flat single-tint tiers replaced with real
+   two-tone (dark -> vivid) gradients -- every "light" stop below was
+   deliberately picked and then verified via manual WCAG luminance
+   calculation (not guessed) to keep #fff text at >=4.5:1 against it;
+   several initial candidates from the obvious "bright Tailwind-400"
+   shade of each hue (e.g. sky-400 #38bdf8) measured well below that
+   (L~0.44, contrast ~2:1) and were swapped for a more moderate
+   "600/700" shade of the same hue instead -- still a clearly *lighter*
+   stop than the gradient's own dark end, just not neon-bright. Text
+   stays `#fff`/near-white throughout (Part 8); depth comes from the
+   shared `.discovery-chip` inset highlight above plus a small outer
+   drop shadow per tier below, not from the gradient itself.
+
+   Three-tier color language (unchanged from the previous pass): primary
+   strongest, category medium, tag subtlest -- shared with desktop
+   (colors are explicitly safe to share; desktop's own single-row/
+   unboxed layout is untouched). Primary is now three distinct gradients
+   (one per fixed item, `type: primary-new/-trending/-popular` from
+   front-page.php/single-video.php) instead of one shared color, per
+   this task's own explicit example. */
+.discovery-chip--primary-new,
+.discovery-chip--primary-trending,
+.discovery-chip--primary-popular {
+    color: #fff;
+    font-weight: 700;
+    border-width: 0;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.discovery-chip--primary-new {
+    background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+}
+
+.discovery-chip--primary-trending {
+    background: linear-gradient(135deg, #7f1d1d 0%, #c2410c 100%);
+}
+
+.discovery-chip--primary-popular {
+    background: linear-gradient(135deg, #4c1d6b 0%, #a21caf 100%);
+}
+
+.discovery-chip--primary-new:hover,
+.discovery-chip--primary-new:focus-visible,
+.discovery-chip--primary-trending:hover,
+.discovery-chip--primary-trending:focus-visible,
+.discovery-chip--primary-popular:hover,
+.discovery-chip--primary-popular:focus-visible {
+    color: #fff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 2px 5px rgba(0, 0, 0, 0.32);
+    filter: brightness(1.12);
+}
+
+/* Category tier -- four hand-picked gradients for this site's own named
+   categories (Part 3's own explicit examples), keyed by slug via
+   {@see tube_theme_discovery_category_meta()}; any OTHER category falls
+   back to the 8-hue cyclical set further below
+   ({@see tube_theme_discovery_category_color_class()}, `$term_id % 8`)
+   so a future category is never left uncolored. */
+.discovery-chip--cat-asia,
+.discovery-chip--cat-africa,
+.discovery-chip--cat-japan,
+.discovery-chip--cat-vietnam {
+    color: #fff;
+    border-width: 0;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 2px rgba(0, 0, 0, 0.22);
+}
+
+.discovery-chip--cat-asia {
+    background: linear-gradient(135deg, #312e81 0%, #7c3aed 100%);
+}
+
+.discovery-chip--cat-africa {
+    background: linear-gradient(135deg, #1e3a5f 0%, #0f766e 100%);
+}
+
+.discovery-chip--cat-japan {
+    background: linear-gradient(135deg, #14532d 0%, #047857 100%);
+}
+
+.discovery-chip--cat-vietnam {
+    background: linear-gradient(135deg, #134e4a 0%, #0e7490 100%);
+}
+
+.discovery-chip--cat-asia:hover,
+.discovery-chip--cat-asia:focus-visible,
+.discovery-chip--cat-africa:hover,
+.discovery-chip--cat-africa:focus-visible,
+.discovery-chip--cat-japan:hover,
+.discovery-chip--cat-japan:focus-visible,
+.discovery-chip--cat-vietnam:hover,
+.discovery-chip--cat-vietnam:focus-visible {
+    color: #fff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 2px 4px rgba(0, 0, 0, 0.3);
+    filter: brightness(1.1);
+}
+
+/* Cyclical fallback (8 variants) -- used for any category NOT in the
+   named map above, and (at a lower opacity-equivalent via a darker
+   overall gradient, see the `.discovery-chip--tag.tag-chip--cN`
+   overrides right below) for every discovery tag chip. Same `$term_id %
+   8` mechanism as before, still deterministic, never randomized. */
+.discovery-chip--cat-c0,
+.discovery-chip--cat-c1,
+.discovery-chip--cat-c2,
+.discovery-chip--cat-c3,
+.discovery-chip--cat-c4,
+.discovery-chip--cat-c5,
+.discovery-chip--cat-c6,
+.discovery-chip--cat-c7 {
+    color: #fff;
+    border-width: 0;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 2px rgba(0, 0, 0, 0.22);
+}
+
+.discovery-chip--cat-c0 {
+    background: linear-gradient(135deg, #7f1d2e 0%, #be123c 100%);
+}
+
+.discovery-chip--cat-c1 {
+    background: linear-gradient(135deg, #7c2d12 0%, #c2410c 100%);
+}
+
+.discovery-chip--cat-c2 {
+    background: linear-gradient(135deg, #713f12 0%, #a16207 100%);
+}
+
+.discovery-chip--cat-c3 {
+    background: linear-gradient(135deg, #14532d 0%, #047857 100%);
+}
+
+.discovery-chip--cat-c4 {
+    background: linear-gradient(135deg, #134e4a 0%, #0e7490 100%);
+}
+
+.discovery-chip--cat-c5 {
+    background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+}
+
+.discovery-chip--cat-c6 {
+    background: linear-gradient(135deg, #312e81 0%, #7c3aed 100%);
+}
+
+.discovery-chip--cat-c7 {
+    background: linear-gradient(135deg, #831843 0%, #be185d 100%);
+}
+
+.discovery-chip--cat-c0:hover,
+.discovery-chip--cat-c0:focus-visible,
+.discovery-chip--cat-c1:hover,
+.discovery-chip--cat-c1:focus-visible,
+.discovery-chip--cat-c2:hover,
+.discovery-chip--cat-c2:focus-visible,
+.discovery-chip--cat-c3:hover,
+.discovery-chip--cat-c3:focus-visible,
+.discovery-chip--cat-c4:hover,
+.discovery-chip--cat-c4:focus-visible,
+.discovery-chip--cat-c5:hover,
+.discovery-chip--cat-c5:focus-visible,
+.discovery-chip--cat-c6:hover,
+.discovery-chip--cat-c6:focus-visible,
+.discovery-chip--cat-c7:hover,
+.discovery-chip--cat-c7:focus-visible {
+    color: #fff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 2px 4px rgba(0, 0, 0, 0.3);
+    filter: brightness(1.1);
+}
+
+/* Tag tier: a discovery-chip with `type: tag` renders with `.tag-chip--
+   cN` added directly (see template-parts/discovery-chips.php); a plain
+   `.tag-chip--cN` (Popular Tags, a video's own tag list) still gets its
+   own original flat tint further below, completely untouched -- this
+   compound selector's higher specificity only ever matches a tag chip
+   that ALSO carries `.discovery-chip--tag`, i.e. only inside this one
+   component, so nowhere else `.tag-chip--cN` is used gets a gradient it
+   didn't ask for. Reuses the exact same cyclical gradient set as the
+   category fallback above (`$term_id % 8`, one hue per index) rather
+   than a second independent tag-specific palette -- gradient stops are
+   identical between a category and a tag that happen to land on the
+   same index, only opacity of the *desktop* flat-tint fallback (kept
+   for `.tag-chip--cN` itself, unrelated to this override) ever
+   distinguished the two tiers before this pass. */
+.discovery-chip--tag.tag-chip--c0,
+.discovery-chip--tag.tag-chip--c1,
+.discovery-chip--tag.tag-chip--c2,
+.discovery-chip--tag.tag-chip--c3,
+.discovery-chip--tag.tag-chip--c4,
+.discovery-chip--tag.tag-chip--c5,
+.discovery-chip--tag.tag-chip--c6,
+.discovery-chip--tag.tag-chip--c7 {
+    color: #fff;
+    border-width: 0;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.discovery-chip--tag.tag-chip--c0 {
+    background: linear-gradient(135deg, #7f1d2e 0%, #be123c 100%);
+}
+
+.discovery-chip--tag.tag-chip--c1 {
+    background: linear-gradient(135deg, #7c2d12 0%, #c2410c 100%);
+}
+
+.discovery-chip--tag.tag-chip--c2 {
+    background: linear-gradient(135deg, #713f12 0%, #a16207 100%);
+}
+
+.discovery-chip--tag.tag-chip--c3 {
+    background: linear-gradient(135deg, #14532d 0%, #047857 100%);
+}
+
+.discovery-chip--tag.tag-chip--c4 {
+    background: linear-gradient(135deg, #134e4a 0%, #0e7490 100%);
+}
+
+.discovery-chip--tag.tag-chip--c5 {
+    background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+}
+
+.discovery-chip--tag.tag-chip--c6 {
+    background: linear-gradient(135deg, #312e81 0%, #7c3aed 100%);
+}
+
+.discovery-chip--tag.tag-chip--c7 {
+    background: linear-gradient(135deg, #831843 0%, #be185d 100%);
+}
+
+.discovery-chip--tag.tag-chip--c0:hover,
+.discovery-chip--tag.tag-chip--c0:focus-visible,
+.discovery-chip--tag.tag-chip--c1:hover,
+.discovery-chip--tag.tag-chip--c1:focus-visible,
+.discovery-chip--tag.tag-chip--c2:hover,
+.discovery-chip--tag.tag-chip--c2:focus-visible,
+.discovery-chip--tag.tag-chip--c3:hover,
+.discovery-chip--tag.tag-chip--c3:focus-visible,
+.discovery-chip--tag.tag-chip--c4:hover,
+.discovery-chip--tag.tag-chip--c4:focus-visible,
+.discovery-chip--tag.tag-chip--c5:hover,
+.discovery-chip--tag.tag-chip--c5:focus-visible,
+.discovery-chip--tag.tag-chip--c6:hover,
+.discovery-chip--tag.tag-chip--c6:focus-visible,
+.discovery-chip--tag.tag-chip--c7:hover,
+.discovery-chip--tag.tag-chip--c7:focus-visible {
+    color: #fff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 2px 4px rgba(0, 0, 0, 0.28);
+    filter: brightness(1.1);
+}
+
+.tag-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    /* 6px/10px + a 6px radius (2026-08-27 pill-regression pass, tightened
+       from the previous 7px/12px/7px to land the base chip's own height
+       inside this task's explicit 30-34px desktop / 28-32px mobile
+       target) -- deliberately a compact rounded-RECTANGLE, not a
+       capsule: at this ~30-32px chip height a capsule needs radius
+       >= ~15px, so 6px still reads as a small card. */
+    padding: 6px 10px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    transition: color var(--transition-fast), background-color var(--transition-fast),
+        border-color var(--transition-fast), transform 150ms ease;
+}
+
+.tag-chip:hover {
+    color: var(--color-text);
+    background: var(--color-surface-elevated);
+    transform: translateY(-1px);
+}
+
+.tag-chip:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+}
+
+.tag-chip__count {
+    /* Deliberately smaller/lighter than the tag name ("count visually
+       secondary") -- same "(3)" text content as before, no count-logic
+       change, purely a type-scale/color demotion relative to
+       .tag-chip's own 600-weight 0.8125rem (13px) name. An absolute
+       0.6875rem (11px), not `em`-relative, so it lands precisely in
+       this task's explicit 11-12px target regardless of the name's own
+       size (2026-08-27 pill-regression pass). */
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--color-text-faint);
+}
+
+/* Deterministic multi-color tag chips: the same tag always renders in
+   the same one of 8 hues everywhere it appears (popular tags, single-
+   video tags, the tags directory) -- {@see tube_theme_tag_color_class()},
+   which picks the class below by `$term_id % 8`, never randomly per
+   render. Each variant tints text/border/a translucent background wash
+   (never a solid fill) so chips stay legible on the dark surface and
+   don't compete with --color-accent, which stays reserved for primary
+   actions (Part 18 of the homepage redesign already established this
+   "accent used selectively" rule; these are a deliberate, explicitly
+   requested exception scoped to tag chips only).
+   2026-08-27 tag redesign: background/border opacity raised (0.1/0.35
+   -> 0.16/0.55) so tags read as clearly colored cards against the dark
+   surface instead of blending in; each variant now has its own bumped-
+   opacity :hover/:focus-visible state (replacing the old neutral
+   white-wash hover) so the tag's own hue gets stronger on interaction
+   instead of being replaced by it. */
+.tag-chip--c0 {
+    color: #ff8a94;
+    border-color: rgba(255, 138, 148, 0.55);
+    background: rgba(255, 138, 148, 0.16);
+}
+
+.tag-chip--c0:hover,
+.tag-chip--c0:focus-visible {
+    border-color: rgba(255, 138, 148, 0.8);
+    background: rgba(255, 138, 148, 0.26);
+}
+
+.tag-chip--c1 {
+    color: #ffb366;
+    border-color: rgba(255, 179, 102, 0.55);
+    background: rgba(255, 179, 102, 0.16);
+}
+
+.tag-chip--c1:hover,
+.tag-chip--c1:focus-visible {
+    border-color: rgba(255, 179, 102, 0.8);
+    background: rgba(255, 179, 102, 0.26);
+}
+
+.tag-chip--c2 {
+    color: #f2d675;
+    border-color: rgba(242, 214, 117, 0.55);
+    background: rgba(242, 214, 117, 0.16);
+}
+
+.tag-chip--c2:hover,
+.tag-chip--c2:focus-visible {
+    border-color: rgba(242, 214, 117, 0.8);
+    background: rgba(242, 214, 117, 0.26);
+}
+
+.tag-chip--c3 {
+    color: #8ee0a1;
+    border-color: rgba(142, 224, 161, 0.55);
+    background: rgba(142, 224, 161, 0.16);
+}
+
+.tag-chip--c3:hover,
+.tag-chip--c3:focus-visible {
+    border-color: rgba(142, 224, 161, 0.8);
+    background: rgba(142, 224, 161, 0.26);
+}
+
+.tag-chip--c4 {
+    color: #6fd6d2;
+    border-color: rgba(111, 214, 210, 0.55);
+    background: rgba(111, 214, 210, 0.16);
+}
+
+.tag-chip--c4:hover,
+.tag-chip--c4:focus-visible {
+    border-color: rgba(111, 214, 210, 0.8);
+    background: rgba(111, 214, 210, 0.26);
+}
+
+.tag-chip--c5 {
+    color: #7cb8f2;
+    border-color: rgba(124, 184, 242, 0.55);
+    background: rgba(124, 184, 242, 0.16);
+}
+
+.tag-chip--c5:hover,
+.tag-chip--c5:focus-visible {
+    border-color: rgba(124, 184, 242, 0.8);
+    background: rgba(124, 184, 242, 0.26);
+}
+
+.tag-chip--c6 {
+    color: #b39ef2;
+    border-color: rgba(179, 158, 242, 0.55);
+    background: rgba(179, 158, 242, 0.16);
+}
+
+.tag-chip--c6:hover,
+.tag-chip--c6:focus-visible {
+    border-color: rgba(179, 158, 242, 0.8);
+    background: rgba(179, 158, 242, 0.26);
+}
+
+.tag-chip--c7 {
+    color: #f0a3d0;
+    border-color: rgba(240, 163, 208, 0.55);
+    background: rgba(240, 163, 208, 0.16);
+}
+
+.tag-chip--c7:hover,
+.tag-chip--c7:focus-visible {
+    border-color: rgba(240, 163, 208, 0.8);
+    background: rgba(240, 163, 208, 0.26);
+}
+
+.video-single__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: var(--space-3) 0 0;
+}
+
+.archive-count {
+    margin: calc(var(--space-4) * -1) 0 var(--space-6);
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+}
+
+.popular-tags__heading-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
+}
+
+.popular-tags__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.popular-tags__list--directory .tag-chip {
+    font-size: 0.9rem;
+    padding: var(--space-2) var(--space-4);
+}
+
+/* Trending + Popular Tags: single column (tags below trending) until the
+   1024px breakpoint below hands the aside its own column — the homepage's
+   busiest section, so it gets the widest single-column grid on mobile
+   rather than the narrower auto-fill columns of a plain section. */
+.trending-with-tags {
+    display: grid;
+    gap: var(--space-8);
+}
+
+/* Visual hierarchy between homepage rows (§8: "don't make every section
+   identical") — Trending stays borderless (it's the section immediately
+   under the hero, already visually distinct from it), Recently Added gets
+   its own elevated panel, and Most Viewed gets a top accent rule. Purely
+   cosmetic — none of this changes any query or data source. */
+.section--recent {
+    padding: var(--space-6);
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+}
+
+.section--popular {
+    padding-top: var(--space-8);
+    border-top: 1px solid var(--color-border);
+}
+
+/* ==========================================================================
+   14. Responsive breakpoints
    ========================================================================== */
 
 @media (min-width: 640px) {
@@ -1093,18 +2243,6 @@ ol {
 }
 
 @media (min-width: 900px) {
-    .site-nav {
-        display: flex;
-    }
-
-    .site-header__search {
-        display: flex;
-    }
-
-    .mobile-nav-toggle {
-        display: none;
-    }
-
     .profile-header {
         padding: var(--space-8);
     }
@@ -1115,8 +2253,673 @@ ol {
     }
 }
 
+@media (min-width: 1024px) {
+    .trending-with-tags {
+        grid-template-columns: minmax(0, 1fr) 300px;
+        align-items: start;
+    }
+
+    /* Watch page: main content ~70-75%, sidebar ~25-30%. Exactly TWO
+       direct grid children -- .watch-layout__main and .watch-layout__sidebar
+       -- is what actually fixes the "left column waits for the sidebar"
+       bug: "Video Liên Quan" and "Đang Thịnh Hành" are both nested
+       *inside* .watch-layout__main now, in plain block flow alongside
+       the player/info/description/tags above them, so their vertical
+       position is governed entirely by normal margin-collapsing between
+       block siblings within main -- never by the outer grid at all.
+       Neither related-main nor trending carries any grid-column/grid-row
+       of their own (an earlier version gave .watch-layout__trending its
+       own `grid-column: 1` as a *sibling* of main/sidebar; that still
+       let the outer grid decide its row, which is exactly the bug this
+       fully-nested structure removes). Sidebar's own height can grow
+       arbitrarily without moving anything in main -- verified with a
+       temporary 3000px-tall sidebar stress test. DOM order stays
+       main-then-sidebar so mobile's plain block stack (.watch-layout
+       reverts to display:block there, no grid at all) still shows
+       everything in one column with no duplicate recommendation
+       sections. */
+    .watch-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 340px;
+        gap: 28px;
+        align-items: start;
+    }
+
+    .watch-layout__main {
+        min-width: 0;
+    }
+
+    .watch-layout__sidebar {
+        min-width: 0;
+        align-self: start;
+    }
+
+    /* Both sit in .watch-layout__main's normal block flow -- plain
+       sibling margin-collapsing (with the article above, and with each
+       other) is what gives the ~28px gap Part "RELATED SECTION POSITION"/
+       "TRENDING POSITION" ask for, in every combination: present, absent,
+       or both present. No :last-child margin-zeroing hacks needed here
+       (those were only ever necessary to work around grid row-gap not
+       collapsing with margins -- moot now that neither is a grid item). */
+    .watch-layout__related-main,
+    .watch-layout__trending {
+        display: block;
+        margin-top: 28px;
+    }
+
+    /* The sidebar is too narrow for the 2-up card grid that suits the
+       full-width mobile layout -- a single-column list reads better at
+       this width, the same "not a compressed version of another
+       layout" principle Part 2 asks for generally. Compact: only the
+       first 5 of the 12 videos mobile shows stay visible here (Part 8
+       — "4-6 recommendations, not huge") -- CSS-only, still the exact
+       same 12-item array/render mobile uses unsliced. */
+    .watch-layout__sidebar .video-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .watch-layout__sidebar .video-grid > *:nth-child(n + 6) {
+        display: none;
+    }
+
+    /* Compact horizontal sidebar cards (poster left, text right) instead
+       of the vertical poster-on-top card the full-width grids use --
+       still the one shared .video-card component (Part 8), restyled by
+       context by this descendant selector rather than a second template. */
+    .watch-layout__sidebar .video-card {
+        display: flex;
+        flex-direction: row;
+        gap: var(--space-2);
+    }
+
+    .watch-layout__sidebar .video-card__thumb {
+        width: 128px;
+        flex-shrink: 0;
+        margin-bottom: 0;
+    }
+
+    .watch-layout__sidebar .video-card__title {
+        font-size: 0.8125rem;
+        -webkit-line-clamp: 2;
+    }
+
+    .watch-layout__sidebar .video-card__meta {
+        font-size: 0.75rem;
+    }
+
+    /* "Video Liên Quan"/"Đang Thịnh Hành" card density inside the main
+       column -- auto-fit/minmax sizes columns off the *container's*
+       actual width (this grid's own box, which is main's ~996px at
+       1440px viewport, not the page/viewport width), so it naturally
+       lands on 4-up when main is wide enough and steps down to 3-up (or
+       fewer) exactly when it isn't -- never a fixed repeat(N, 1fr) tied
+       to a viewport breakpoint that assumes how wide main happens to be
+       at that width. Scoped to this >=1024px block only: unscoped, this
+       would also apply to these same two sections' mobile rendering,
+       where .watch-layout__main is full viewport width and a 220px
+       minimum would collapse mobile from its established 2-up down to
+       1-up -- a real regression this media query boundary prevents. */
+    .watch-layout__related-main .video-grid,
+    .watch-layout__trending .video-grid {
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+}
+
 @media (min-width: 1200px) {
     .video-grid {
         grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    }
+}
+
+/* ==========================================================================
+   15. Mobile density compression (2026-08-27)
+   ========================================================================== */
+
+/* 2026-08-28: header/search/nav redesign -- mobile now reuses the exact
+   same three elements desktop does (`.site-header__home`,
+   `.site-header__search`, `.site-header__account`, `.site-nav`), wrapped
+   into two rows via `flex-wrap` + `order` on `.site-header__inner`
+   rather than any duplicate markup:
+     row 1 (order 1-3): brand, search (flex:1, gets the remaining
+       width), account -- exactly desktop's own three row-1 elements,
+       just compacted and reflowed.
+     row 2 (order 4, flex-basis:100% forces the wrap): `.site-nav`
+       (Danh Mục dropdown + the same nav links), horizontally
+       scrollable.
+   `order`/`flex-basis` are scoped to this block only -- desktop
+   (>=1024px) keeps its own natural DOM order (brand, nav, search,
+   account, all inline) untouched. This replaces the earlier icon-
+   triggered search overlay and off-canvas nav drawer entirely (both
+   removed from header.php/tube-theme.js) -- search is a real, always-
+   visible `<input>` now, and Danh Mục/nav links are reachable directly
+   in row 2 instead of behind a hamburger. */
+@media (max-width: 1023px) {
+    .site-header {
+        /* 6px vertical (was 7px) -- 32px search field + 6px×2 padding =
+           44px row-1 height, landing right at this task's own 40-44px
+           ceiling instead of 47px. */
+        padding: 6px 8px;
+    }
+
+    .site-header__inner {
+        flex-wrap: wrap;
+        /* 6px column-gap (was 8px) between brand/search/account claws
+           back a few more px for search without touching either
+           control's own size -- one of three deliberate small savings
+           (this, brand's 18->17px, and tighter row-2 padding below)
+           that together are what actually move the measured search-
+           field width from 132/162/184/202px (previous pass, still a
+           few px short of this task's own 135/165/185/200px targets at
+           360/390/412) up past every target -- see the final report's
+           own measured numbers for the after values. */
+        gap: 6px 6px;
+    }
+
+    .site-header__home {
+        order: 1;
+        font-size: 17px;
+    }
+
+    /* Search is the priority control in this row (Part 7) -- a logo
+       capped much smaller than desktop's so it can never squeeze
+       `.site-header__search` (the row's only `flex: 1 1 0` element)
+       below a usable width. */
+    .site-brand__logo img {
+        max-height: 28px;
+        max-width: 110px;
+    }
+
+    .site-header__search {
+        order: 2;
+        /* flex-basis: 0 (not the base rule's `auto`) is what actually
+           makes this fill the remaining row-1 width -- with `auto`, the
+           wrap algorithm sized this by its own content first and wrapped
+           `.site-header__account` onto a line of its own well before
+           360px (verified live: account/login-btn landed at y:46, a
+           full line below brand+search, at 360/390/412 -- only 430px
+           had enough natural content width to keep all three on one
+           line). `flex: 1 1 0` starts every width from "zero, then
+           grow," so brand/search/account share row 1 the same way at
+           every phone width. */
+        flex: 1 1 0;
+        min-width: 0;
+        max-width: none;
+        margin-left: 0;
+    }
+
+    .site-header__search-field {
+        height: 32px;
+        padding: 0 4px 0 9px;
+    }
+
+    .site-header__search input[type="text"] {
+        font-size: 12.5px;
+    }
+
+    .site-header__search button {
+        width: 27px;
+        height: 27px;
+    }
+
+    .site-header__search svg {
+        width: 14px;
+        height: 14px;
+    }
+
+    .site-header__account {
+        order: 3;
+        flex-shrink: 0;
+    }
+
+    /* Row 2: the same `.site-nav` desktop uses (Danh Mục dropdown + nav
+       links), forced onto its own full-width row and made horizontally
+       scrollable -- a real scrolling nav row (Part 7), not a wrapped
+       multi-line one: `flex-wrap: nowrap` + `overflow-x: auto` is what
+       makes items overflow sideways into a scrollbar instead of
+       wrapping to a third row. `mask-image` fades the right edge so a
+       partially-visible next chip reads as an intentional "more to
+       scroll" affordance instead of a clipped-off mistake (Part 8) --
+       pure CSS, no JS, and it only affects this row's own painted
+       pixels (`overflow-x: auto` already scopes the scrolling to this
+       element, never the page). */
+    .site-nav {
+        order: 4;
+        flex-basis: 100%;
+        flex-wrap: nowrap;
+        gap: 4px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        /* 2026-08-28: the near-zero/negative gap an earlier pass put here
+           (to visually blend this row with `.discovery-chips` into one
+           continuous strip) is gone now that `.discovery-chips` is its
+           own bordered box (this task's own topbar redesign) rather than
+           a same-styled second row -- a box needs normal breathing room
+           below Danh Mục, not to be pulled flush against it. */
+        margin-bottom: 0;
+        padding-bottom: 1px;
+        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent 100%);
+        mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent 100%);
+    }
+
+    .site-nav::-webkit-scrollbar {
+        display: none;
+    }
+
+    .site-nav__item {
+        flex-shrink: 0;
+        position: relative;
+    }
+
+    .site-nav__link {
+        gap: 4px;
+        height: 26px;
+        padding: 0 7px;
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: 5px;
+        font-size: 11.5px;
+        white-space: nowrap;
+    }
+
+    .site-nav__caret {
+        width: 7px;
+        height: 7px;
+    }
+
+    /* `position: fixed` (not `absolute`) so this can never be clipped by
+       `.site-nav`'s own `overflow-x: auto` above -- see the click
+       handler in tube-theme.js for exactly why that clipping happens
+       and where the precise `top` value (this rule's own `90px` is only
+       a same-ballpark fallback for the rare case JS hasn't run yet)
+       comes from. Anchored to the viewport's left/right edges rather
+       than the trigger's own x-position because the trigger sits inside
+       a horizontally-scrolling row -- its x-position isn't stable. */
+    .mega-menu {
+        position: fixed;
+        top: 90px;
+        left: 9px;
+        right: 9px;
+        width: auto;
+        max-width: none;
+        max-height: calc(100vh - 100px);
+        overflow-y: auto;
+        margin-top: 0;
+    }
+
+    /* tube-theme.js portals `.mega-menu` to a direct child of <body>
+       while open (see its own comment for why) -- once moved, the
+       `.site-nav__item.is-open > .mega-menu` child-combinator reveal
+       rule below can never match it again, so JS adds this class
+       instead, right before the portal happens. */
+    .mega-menu.mega-menu--open {
+        opacity: 1;
+        visibility: visible;
+        transform: translateY(0);
+    }
+}
+
+/* Tablet: more breathing room than phone (Part 12) -- wider search,
+   room for the account name again (hidden only <600px, see
+   tube-members.css's own ≤599px rule). */
+@media (min-width: 600px) and (max-width: 1023px) {
+    .site-header__search {
+        flex: 0 1 380px;
+    }
+
+    .site-header__search-field {
+        height: 38px;
+        padding: 0 6px 0 14px;
+    }
+
+    .site-header__search input[type="text"] {
+        font-size: 14px;
+    }
+
+    .site-header__search button {
+        width: 32px;
+        height: 32px;
+    }
+}
+
+/* 600-767px specifically (not the full 600-1023 tablet range above) --
+   verified live: at exactly 600px this row's fixed-width elements
+   (brand + this block's own fixed 380px search + account) already
+   summed to only ~3.9px under the viewport's available width even in
+   text mode, so the general ≤1023px logo cap (110px, wider than the
+   ~98.5px text brand it replaces) was enough on its own to push the
+   row over and wrap `.site-header__account` onto its own line. ≥768px
+   has enough extra viewport width that this never happens (measured).
+   Capping the logo to this text-brand-sized budget here restores the
+   same per-row math logo mode has everywhere else -- never wider than
+   what text mode already fit. */
+@media (min-width: 600px) and (max-width: 767px) {
+    .site-brand__logo img {
+        max-width: 95px;
+    }
+}
+
+/* Discovery chip strip: one horizontal scrollable row (Part 2) -- already
+   `overflow-x: auto` on `.discovery-chips` itself with the scrollbar
+   hidden (unchanged); this only shrinks the chip control size, it never
+   changes how the strip scrolls.
+
+   Scoped to ≤1023px (not ≤768px) -- Part 20 explicitly asks for a
+   continuous tablet density rather than a hard jump straight from
+   compact-mobile to full desktop at exactly 768/769px; 1023px instead
+   lines this compression up with the *existing* single boundary this
+   codebase's own watch-layout/trending-with-tags grids already commit
+   to for "mobile vs. desktop" (`min-width: 1024px`, section 14 above),
+   so there is exactly one transition point for the whole page, not two. */
+@media (max-width: 1023px) {
+    /* Was the base rule's 16px top padding, tightened by an earlier pass
+       to help visually merge Danh Mục with `.discovery-chips`; that trick
+       is gone now that `.discovery-chips` is its own bordered box (see
+       below), but keeping a *slightly* tighter top padding than
+       desktop's own 16px still suits the overall compact-mobile
+       direction, so this stays at a normal-but-not-huge 10px rather than
+       reverting all the way back to 16px. */
+    .site-main {
+        padding-top: 10px;
+    }
+
+    /* 2026-08-28 topbar redesign: was a single horizontally-scrolling
+       row (`overflow-x: auto`, `white-space: nowrap` on each chip) --
+       explicitly replaced with a wrapping wrapping box so most/all chips
+       are visible at once with no horizontal scroll (Part 2's own hard
+       "do NOT use overflow-x:auto ... on mobile" rule). The box
+       treatment itself (background/border/radius) is mobile/tablet-only
+       -- desktop keeps its existing single-row strip un-boxed, per this
+       task's own "keep existing single-row desktop presentation" --
+       only the chip *colors* below are shared with desktop. */
+    .discovery-chips {
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: 5px;
+        overflow-x: visible;
+        padding: 7px 9px;
+        margin: 0 auto var(--space-3);
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: 9px;
+        /* Height cap (Part 9): this dataset renders 3 fixed primary
+           chips + every real category (4 here) + up to 8 popular-tag
+           shortcuts = 15 chips, which wrap to 4-5 full rows uncapped
+           (131-161px measured live at 360-430px) -- well past this
+           task's own ~70-100px ceiling. 100px is an exact 3-row cutoff
+           at this breakpoint's own 25px chip height + 5px gap + 7px
+           padding (3×25 + 2×5 + 2×7 = 99px content+padding, +2px border
+           = 101px, empirically confirmed live to land the cut exactly
+           on a row boundary at every width 360-430 -- never a chip
+           rendered half-visible). Primary chips always come first in
+           the array (front-page.php/single-video.php), then every
+           category, then tags last -- so whatever this clips is always
+           the LEAST important tier, tags, never a primary filter or a
+           real category link. Confirmed live: 360px keeps all 3 primary
+           + all 4 categories + the first 3 of 8 tags (10/15 chips
+           visible, last 5 tags clipped); 390-430px keep all 3 primary +
+           all 4 categories + 6 of 8 tags (13/15 visible, last 2 tags
+           clipped). Every chip, clipped or not, stays a real crawlable
+           `<a href>` in the HTML -- only the visual overflow is capped,
+           never the markup (Part 12's own crawlability requirement). */
+        max-height: 100px;
+        overflow-y: hidden;
+    }
+
+    .discovery-chip {
+        height: 25px;
+        padding: 0 7px;
+        font-size: 11px;
+        border-radius: 5px;
+    }
+
+    /* ---- Hero ------------------------------------------------------ */
+
+    .hero {
+        /* 2026-08-28 (second pass): retargeted again from ~160-180px down
+           to ~148-168px -- still "an introduction, not the entire mobile
+           page," now specifically 150-165px at 390px. Solved as a linear
+           function of viewport width (not the previous pass's floor/vw/
+           ceiling clamp, which put 430px 2px over its own new 155-170px
+           ceiling) so 360/390/430 all land inside their own distinct
+           target bands: ~149px, ~154px, ~161px. */
+        min-height: clamp(148px, 88px + 17vw, 168px);
+        margin-bottom: var(--space-4);
+    }
+
+    .hero__content {
+        padding: 10px;
+    }
+
+    .hero__eyebrow {
+        padding: 4px 6px;
+        margin-bottom: 5px;
+        font-size: 10.5px;
+        line-height: 1.3;
+        border-radius: 5px;
+    }
+
+    .hero__title {
+        font-size: clamp(17px, 7px + 2.8vw, 19px);
+        line-height: 1.1;
+        margin-bottom: 5px;
+        /* Title must not visually dominate the image or run edge-to-edge
+           at this size (Part 11's own "72-78% max-width"). */
+        max-width: 75%;
+        /* A long title could otherwise push the meta/CTA below the now-
+           compact hero, or run underneath the scrim's most faded (top)
+           zone -- capped at 2 lines, matching this breakpoint's own
+           explicit target, the same way `.video-card__title` is already
+           clamped elsewhere in this file. */
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .hero__meta {
+        margin-bottom: 6px;
+        font-size: 11px;
+    }
+
+    /* The scrim gradient below was tuned for a taller hero than this,
+       where the text sat entirely within its bottom "mostly opaque"
+       band. At this shorter height the same content spans further up
+       into the gradient's much-more-transparent middle/top zone
+       (verified live: title/meta were landing right where the video's
+       own thumbnail artwork showed through, hurting legibility) -- a
+       flatter, more uniformly dark overlay fixes this without touching
+       `.hero__scrim`'s own desktop gradient. */
+    .hero__scrim {
+        background: linear-gradient(0deg, var(--color-bg) 0%, rgba(11, 14, 20, 0.75) 60%, rgba(11, 14, 20, 0.3) 100%);
+    }
+
+    .hero__cta {
+        height: 30px;
+        font-size: 12px;
+        padding: 0 11px;
+        border-radius: 6px;
+    }
+
+    /* ---- Section rhythm / headings ---------------------------------- */
+
+    .section {
+        margin-bottom: var(--space-5);
+    }
+
+    .section-heading-row {
+        margin-bottom: 8px;
+    }
+
+    /* 2026-08-28 (second pass): the previous pass's decreasing clamp
+       targeted 19-22px at 390px; this task's own target is tighter
+       (18-19px) -- and the desktop formula this overrides
+       (`clamp(0.9375rem, 0.85rem + 0.5vw, 1.375rem)`) already computes
+       to ~18.72px right at its own 1024px starting point (verified via
+       getComputedStyle()), which is now itself INSIDE the 18-19px
+       mobile target. A flat, non-responsive 18.7px both satisfies
+       360-430px directly and is continuous with desktop's own value
+       within 0.02px at the 1024px boundary (Part 19) -- no clamp/vw
+       formula needed once the two ranges overlap like this. */
+    .section-heading {
+        font-size: 18.7px;
+        line-height: 1.15;
+    }
+
+    .section--recent {
+        padding: var(--space-4);
+    }
+
+    /* ---- Video grid / card ------------------------------------------- */
+
+    /* Explicit, container-independent column counts (2026-08-28) --
+       replaces relying on the base rule's `repeat(auto-fill,
+       minmax(clamp(150px,22vw,240px),1fr))` formula for ≤1023px.
+       That formula was verified live (getBoundingClientRect() on the
+       first two cards of every homepage/watch-page grid, at every
+       required width) to already produce the correct column count with
+       zero horizontal overflow -- but auto-fill's column count is a
+       function of the container's available width at layout time, so
+       it has no hard floor: if a future change ever shrinks a
+       container's width below 2×150px+gap, it would silently collapse
+       to a single full-width column with no warning anywhere in this
+       file. `repeat(N, minmax(0, 1fr))` makes the column count an
+       explicit, unconditional fact of the breakpoint instead, removing
+       that failure mode entirely -- `minmax(0, 1fr)` (not plain `1fr`)
+       is what lets each card shrink below its content's intrinsic
+       width, the same reason `.video-card__title`'s line-clamp exists,
+       so a long title can never widen its own column. */
+    .video-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 9px 8px;
+    }
+
+    .video-card {
+        min-width: 0;
+    }
+
+    .video-card__title {
+        font-size: var(--mobile-font-md);
+        line-height: 1.25;
+    }
+
+    .video-card__meta {
+        font-size: var(--mobile-font-xs);
+    }
+}
+
+@media (min-width: 600px) and (max-width: 767px) {
+    .video-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+    .video-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+
+/* Resumes the same ≤1023px condition as the block above (video-grid/
+   video-card) -- split in two only so the two tablet-tier column-count
+   overrides above could sit between them in source order; functionally
+   identical to one continuous block. */
+@media (max-width: 1023px) {
+    /* ---- Tag chips (shared: popular tags + watch-page video tags) --- */
+
+    .tag-chip {
+        gap: 5px;
+        padding: 5px 7px;
+        font-size: var(--mobile-font-sm);
+        border-radius: var(--mobile-radius);
+    }
+
+    .popular-tags__heading-row {
+        margin-bottom: var(--mobile-space-3);
+    }
+
+    /* ---- Watch page: title / meta / actions / description / tags --- */
+
+    .video-single__title {
+        line-height: 1.18;
+    }
+
+    .video-single__meta {
+        gap: 4px var(--mobile-space-2);
+        font-size: 12px;
+    }
+
+    .video-actions__btn {
+        height: 34px;
+        padding: 0 10px;
+        border-radius: var(--mobile-radius);
+        font-size: 12.5px;
+    }
+
+    .video-description {
+        margin-bottom: var(--mobile-space-3);
+    }
+
+    .video-description__content {
+        font-size: 13.5px;
+        line-height: 1.5;
+    }
+
+    .video-single__tags-block {
+        margin-top: var(--mobile-space-3);
+    }
+
+    .watch-layout__comments {
+        margin-bottom: 22px;
+    }
+}
+
+/* ---- Footer: tighter than the ≤900/≤480 layout rules already above,
+   this only touches size/spacing (Part 15). ------------------------- */
+@media (max-width: 480px) {
+    .site-footer {
+        padding: 16px var(--mobile-space-3) 14px;
+    }
+
+    .site-footer__inner {
+        gap: var(--space-4);
+    }
+
+    .site-footer__grid {
+        gap: var(--space-5);
+    }
+
+    .site-footer__brand-link {
+        font-size: 19px;
+    }
+
+    .site-footer__description {
+        font-size: 12.5px;
+    }
+
+    .site-footer__heading {
+        font-size: 11px;
+    }
+
+    .site-footer__list {
+        gap: 7px;
+    }
+
+    .site-footer__list a {
+        font-size: 12.5px;
+    }
+
+    .site-footer__custom-content {
+        gap: 7px;
+        font-size: 12.5px;
+    }
+
+    .site-footer__custom-content ul {
+        gap: 7px;
+    }
+
+    .site-footer__bottom {
+        padding-top: var(--space-4);
+        font-size: 11.5px;
     }
 }

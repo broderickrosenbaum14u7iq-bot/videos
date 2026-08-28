@@ -36,3 +36,6 @@ parameters:
         - wp-content/plugins/tube-player/vendor/autoload.php
         - wp-content/plugins/tube-search/vendor/autoload.php
         - wp-content/plugins/tube-seo/vendor/autoload.php
+        - wp-content/plugins/tube-ads/vendor/autoload.php
+        - wp-content/plugins/tube-members/vendor/autoload.php
+        - wp-content/plugins/tube-comments/vendor/autoload.php

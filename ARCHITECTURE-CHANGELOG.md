@@ -4,6 +4,36 @@ Durable, ongoing record of every accepted architecture change and why. Append a 
 
 ---
 
+## 2026-08-24 — ADR-0001: WordPress Media Library for poster/OG-image overrides (frozen decision reversal)
+
+Source: `adr/0001-media-library-poster-images.md`. This **is** a technical architecture change under `DEVELOPMENT_RULES.md` §8 — it reverses the image half of `ARCHITECTURE_FREEZE.md`'s Frozen Decision #5 ("no video/image bytes are ever stored on the WordPress server") for the admin-selected poster/OG-image override path, and resolves `ARCHITECTURE.md` §13's Open Decision #5 the opposite way from Revision 5's original recommendation.
+
+**Trigger**: new functional requirement, given directly by the project owner (2026-08-24), overriding §8.2/§13's original Cloudflare-Images recommendation now that the confirmed production deployment target (`RELEASE.md`: 3,000–10,000 videos on a single VPS) makes the original "millions of physical files" scale concern inapplicable to the override path specifically.
+
+**What changed**: `wp_tube_video_metadata.poster_image_id`/`og_image_id` now store WordPress Media Library attachment IDs, not Cloudflare Images IDs. `tube-admin`'s poster/OG-image picker uses WordPress's native media modal (upload-from-computer + select-existing-library-item) instead of a custom upload-to-Cloudflare-Images flow; `CloudflareImagesUploader`/`PosterUploadService`/`ImageUploaderInterface`/`ImageUploadException` (Phase 10) are removed. `tube-player`'s `ImageHtmlRenderer` resolves an override via `wp_get_attachment_image_url()`/`wp_get_attachment_image_srcset()` instead of `CloudflareImagesUrlBuilder`. The default (no-override) Cloudflare Stream thumbnail-extraction path is unchanged — confirmed explicitly with the project owner that Stream extraction remains the fallback for any video with no Media Library poster selected, not removed outright. Actor/studio profile photos (Phase 13, a separate feature) are explicitly out of scope and remain on Cloudflare Images unchanged.
+
+A pre-existing gap found during this change's investigation — `tube-seo`'s `SeoHead`/`SitemapGenerator`/`VideoObjectBuilder` never actually honored the `og_image_id` override at all, always using the Stream thumbnail directly, independent of whatever storage backend was behind the override — was fixed in the same change so all consumers of the override are consistent, per this change's own "don't patch one renderer without updating every caller" requirement.
+
+**Migration**: `Migration010SeparateLegacyCloudflareImageIds` (`tube-core`) renames the existing `poster_image_id`/`og_image_id` columns to `legacy_cf_poster_image_id`/`legacy_cf_og_image_id` (preserving, not discarding, any value that might exist in an environment this session could not inspect — confirmed empty in every environment actually checked) and adds fresh `poster_image_id`/`og_image_id` columns. Full detail, rollback, and impact analysis in the ADR itself.
+
+**Also shipped in the same change** (an additive functional requirement, not itself a frozen-decision reversal): `VideoMetadataRepositoryInterface::update_stream_uid()` and a manually-editable Cloudflare Stream UID field in `tube-admin`'s video edit screen, with duplicate-UID validation. No frozen decision required the Stream UID to be immutable after creation; this is new capability, not a reversal.
+
+---
+
+## 2026-08-25 — ADR-0001 addendum: Cloudflare Stream thumbnail default removed
+
+Source: `adr/0001-media-library-poster-images.md`'s "Addendum (2026-08-25)" section. Further reverses `ARCHITECTURE_FREEZE.md` Frozen Decision #5's image half, on top of ADR-0001's original (2026-08-24) reversal.
+
+**Trigger**: live manual browser testing showed videos with no WordPress Media Library poster set were still rendering a Cloudflare Stream–extracted thumbnail — correct per ADR-0001's original decision (the default path was explicitly left unchanged), but the project owner explicitly reversed that too (2026-08-25): no Cloudflare Stream thumbnail may ever be used as a poster image; a video with no Media Library poster renders no image (theme placeholder), not a substitute.
+
+**What changed**: `ImageHtmlRenderer` (`tube-player`) no longer depends on `VideoProviderInterface`/`CloudflareStreamProvider` at all — its Cloudflare Stream fallback branch is removed outright, not merely deprioritized. `resolve_urls()`/`render()` now return `null`/`''` (no image) whenever `poster_image_id`/`og_image_id` is unset or doesn't resolve to a real attachment; a broken/stale attachment reference now behaves identically to "no override set," not a graceful-degrade-to-Stream case. This is the single shared resolution point every caller (`tube_player_get_image_html()`, the click-to-load player's poster, `tube-seo`'s `SeoHead`/`SitemapGenerator`/`VideoObjectBuilder`) already went through, so removing the fallback there closes it everywhere at once. `VideoProviderInterface::thumbnail_url()`/`CloudflareStreamProvider::thumbnail_url()` themselves are not deleted — no application caller remains, but the capability stays as part of the frozen §19.5 vendor-swap boundary, still unit-tested directly.
+
+**Consequence for `tube-seo`**: `SitemapGenerator::build_entries()` now omits a video from the XML sitemap entirely if it has no resolvable OG-image (Google's video sitemap protocol requires a real `<video:thumbnail_loc>` — the same "not ready to publish" treatment already applied to a video with no Stream metadata row at all). `VideoObjectBuilder::build()`'s `thumbnailUrl` and `SeoHead`'s `og:image`/`twitter:image` are omitted, not fabricated as an empty string, under the same condition — mirroring how a genuinely-unknown `duration`/`video:duration` is already omitted rather than fabricated as `0`.
+
+**Migration**: none — application code only, no schema change.
+
+---
+
 ## 2026-08-01 — Post-approval optimization pass (Revision 5)
 
 Source: `ARCHITECTURE-OPTIMIZATION-REVIEW.md` (full reasoning), following an initial pass in `PRE-PHASE-3-ARCHITECTURE-REVIEW.md` (superseded in its conclusions, kept as history). No code changed in this pass — decisions only, applied to `ARCHITECTURE.md` and `DEVELOPMENT_RULES.md`.

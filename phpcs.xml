@@ -111,6 +111,15 @@
                 <element value="tube_theme"/>
                 <element value="TUBE_THEME"/>
                 <element value="Tube_Theme"/>
+                <element value="tube_ads"/>
+                <element value="TUBE_ADS"/>
+                <element value="Tube_Ads"/>
+                <element value="tube_members"/>
+                <element value="TUBE_MEMBERS"/>
+                <element value="Tube_Members"/>
+                <element value="tube_comments"/>
+                <element value="TUBE_COMMENTS"/>
+                <element value="Tube_Comments"/>
             </property>
         </properties>
     </rule>

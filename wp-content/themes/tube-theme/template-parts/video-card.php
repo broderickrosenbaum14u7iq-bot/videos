@@ -37,6 +37,18 @@ $tube_theme_permalink = false === $tube_theme_permalink ? '' : $tube_theme_perma
 
 $tube_theme_duration = tube_theme_format_duration($tube_theme_video->duration_seconds);
 
+// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- already escapes every interpolated value (esc_url()/esc_attr()), verified in Phase 6.
+$tube_theme_poster_html = tube_player_get_image_html(
+    $tube_theme_video->video_id,
+    'grid_card',
+    ['alt' => $tube_theme_video->title]
+);
+// '' means no WordPress poster is set for this video (ADR-0001 — never a
+// Cloudflare Stream thumbnail fallback) -- template-parts/video-card.php's
+// own docblock covers why this renders a deliberate placeholder instead
+// of an empty box; see .video-card__thumb--empty's CSS for the visual.
+$tube_theme_has_poster = '' !== $tube_theme_poster_html;
+
 $tube_theme_badge_names = [];
 
 if ([] !== $tube_theme_video->actor_ids) {
@@ -53,15 +65,19 @@ if ([] === $tube_theme_badge_names && [] !== $tube_theme_video->studio_ids) {
 
 ?>
 <a class="video-card" href="<?php echo esc_url($tube_theme_permalink); ?>">
-    <div class="video-card__thumb">
-        <?php
-        // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- already escapes every interpolated value (esc_url()/esc_attr()), verified in Phase 6.
-        echo tube_player_get_image_html(
-            $tube_theme_video->video_id,
-            'grid_card',
-            ['alt' => $tube_theme_video->title]
-        );
-        ?>
+    <div class="video-card__thumb<?php echo $tube_theme_has_poster ? '' : ' video-card__thumb--empty'; ?>">
+        <?php if ($tube_theme_has_poster) : ?>
+            <?php
+            // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- already escapes every interpolated value, resolved above.
+            echo $tube_theme_poster_html;
+            ?>
+        <?php else : ?>
+            <span class="video-card__thumb-placeholder" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z" fill="none" stroke="currentColor" stroke-width="1.5" />
+                    <path d="M10 9l6 3-6 3z" /></svg>
+                <span class="video-card__thumb-mark">Phim Tối Cổ</span>
+            </span>
+        <?php endif; ?>
         <span class="video-card__play" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
         </span>
@@ -74,8 +90,8 @@ if ([] === $tube_theme_badge_names && [] !== $tube_theme_video->studio_ids) {
         <?php
         printf(
             /* translators: %s: formatted view count. */
-            esc_html__('%s views', 'tube-theme'),
-            esc_html(number_format_i18n($tube_theme_video->views_total))
+            esc_html__('%s lượt xem', 'tube-theme'),
+            esc_html(tube_theme_compact_number($tube_theme_video->views_total))
         );
         ?>
     </p>

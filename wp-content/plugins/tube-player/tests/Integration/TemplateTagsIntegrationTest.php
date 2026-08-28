@@ -100,25 +100,44 @@ final class TemplateTagsIntegrationTest extends TestCase
     }
 
     /**
-     * The image tag carries the expected src, explicit dimensions, and default (lazy) loading attributes.
+     * ADR-0001's 2026-08-25 addendum: a video with no WordPress Media
+     * Library poster override set renders no `<img>` at all — there is
+     * no Cloudflare Stream thumbnail fallback to render instead.
+     */
+    public function test_image_html_returns_empty_string_when_no_poster_override_is_set(): void
+    {
+        self::assertSame('', tube_player_get_image_html($this->video_id, 'grid_card'));
+    }
+
+    /**
+     * With a WordPress Media Library poster override set, the image tag
+     * carries the expected src, explicit dimensions, and default (lazy) loading attributes.
      */
     public function test_image_html_renders_expected_attributes_for_default_call(): void
     {
-        $html = tube_player_get_image_html($this->video_id, 'grid_card');
+        $attachment_id = self::create_test_attachment();
 
-        $expected_src = Tube_Player_Plugin::instance()->video_provider()->thumbnail_url(
-            $this->cf_stream_uid,
-            0,
-            320,
-            180
-        );
+        try {
+            Tube_Core_Plugin::instance()->video_metadata_repository()->update_images(
+                $this->video_id,
+                $attachment_id,
+                null
+            );
 
-        self::assertStringStartsWith('<img ', $html);
-        self::assertStringContainsString('src="' . esc_url($expected_src) . '"', $html);
-        self::assertStringContainsString('width="320"', $html);
-        self::assertStringContainsString('height="180"', $html);
-        self::assertStringContainsString('loading="lazy"', $html);
-        self::assertStringContainsString('fetchpriority="auto"', $html);
+            $html = tube_player_get_image_html($this->video_id, 'grid_card');
+
+            $expected_src = wp_get_attachment_image_url($attachment_id, [320, 180]);
+            self::assertIsString($expected_src);
+
+            self::assertStringStartsWith('<img ', $html);
+            self::assertStringContainsString('src="' . esc_url($expected_src) . '"', $html);
+            self::assertStringContainsString('width="320"', $html);
+            self::assertStringContainsString('height="180"', $html);
+            self::assertStringContainsString('loading="lazy"', $html);
+            self::assertStringContainsString('fetchpriority="auto"', $html);
+        } finally {
+            wp_delete_attachment($attachment_id, true);
+        }
     }
 
     /**
@@ -126,10 +145,22 @@ final class TemplateTagsIntegrationTest extends TestCase
      */
     public function test_image_html_eager_arg_sets_loading_eager_and_high_priority(): void
     {
-        $html = tube_player_get_image_html($this->video_id, 'hero', ['eager' => true]);
+        $attachment_id = self::create_test_attachment();
 
-        self::assertStringContainsString('loading="eager"', $html);
-        self::assertStringContainsString('fetchpriority="high"', $html);
+        try {
+            Tube_Core_Plugin::instance()->video_metadata_repository()->update_images(
+                $this->video_id,
+                $attachment_id,
+                null
+            );
+
+            $html = tube_player_get_image_html($this->video_id, 'hero', ['eager' => true]);
+
+            self::assertStringContainsString('loading="eager"', $html);
+            self::assertStringContainsString('fetchpriority="high"', $html);
+        } finally {
+            wp_delete_attachment($attachment_id, true);
+        }
     }
 
     /**
@@ -149,22 +180,145 @@ final class TemplateTagsIntegrationTest extends TestCase
     }
 
     /**
+     * ADR-0001: when a video has a WordPress Media Library poster
+     * override set, that attachment's own URL is used.
+     */
+    public function test_image_html_uses_media_library_poster_when_override_is_set(): void
+    {
+        $attachment_id = self::create_test_attachment();
+
+        try {
+            Tube_Core_Plugin::instance()->video_metadata_repository()->update_images(
+                $this->video_id,
+                $attachment_id,
+                null
+            );
+
+            $html = tube_player_get_image_html($this->video_id, 'grid_card');
+
+            $expected_src = wp_get_attachment_image_url($attachment_id, [320, 180]);
+
+            self::assertIsString($expected_src);
+            self::assertStringContainsString('src="' . esc_url($expected_src) . '"', $html);
+        } finally {
+            wp_delete_attachment($attachment_id, true);
+        }
+    }
+
+    /**
+     * ADR-0001's 2026-08-25 addendum: a poster override pointing at a
+     * deleted/invalid attachment ID renders no `<img>` at all — there is
+     * no Cloudflare Stream thumbnail fallback to gracefully degrade to
+     * anymore, so a broken reference behaves exactly like "no override
+     * set" rather than silently substituting different content.
+     */
+    public function test_image_html_returns_empty_string_for_invalid_override(): void
+    {
+        Tube_Core_Plugin::instance()->video_metadata_repository()->update_images(
+            $this->video_id,
+            999999999,
+            null
+        );
+
+        self::assertSame('', tube_player_get_image_html($this->video_id, 'grid_card'));
+    }
+
+    /**
+     * Create a real `attachment` post backed by a real 1x1 PNG file with
+     * real generated `_wp_attachment_metadata` (via `wp_generate_attachment_metadata()`)
+     * — the same shape a genuine `wp.media()` upload produces. A bare
+     * `wp_insert_post( ['post_type' => 'attachment', ...] )` with no
+     * underlying file/metadata is not sufficient: `wp_get_attachment_image_url()`
+     * legitimately returns `false` for an array `$size` when no
+     * attachment metadata exists to resolve it against (the same
+     * graceful-degradation path `ImageHtmlRenderer::resolve_urls()` falls
+     * through to the Cloudflare Stream default for), so this fixture must
+     * produce a genuinely resolvable attachment to test the override path
+     * itself, distinct from {@see self::test_image_html_falls_back_to_stream_thumbnail_for_invalid_override()}'s
+     * deliberately-broken-reference case.
+     */
+    private static function create_test_attachment(): int
+    {
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+
+        $upload_dir = wp_upload_dir();
+        $filename   = 'tube-player-test-' . uniqid('', true) . '.png';
+        $file_path  = trailingslashit($upload_dir['path']) . $filename;
+
+        // A real, minimal 1x1 transparent PNG.
+        // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- decoding a fixed, hardcoded test-fixture image, not obfuscation.
+        $png_bytes = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+            true
+        );
+        self::assertIsString($png_bytes);
+
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- test fixture writing to this run's own uploads dir, not a runtime request path.
+        file_put_contents($file_path, $png_bytes);
+
+        $attachment_id = wp_insert_attachment(
+            [
+                'post_mime_type' => 'image/png',
+                'post_title'     => 'Template Tags Integration Test Attachment',
+                'post_status'    => 'inherit',
+            ],
+            $file_path
+        );
+
+        wp_update_attachment_metadata($attachment_id, wp_generate_attachment_metadata($attachment_id, $file_path));
+
+        return $attachment_id;
+    }
+
+    /**
      * The click-to-load block carries the real embed URL, a keyboard-accessible play
-     * button with a title-aware aria-label, and a working noscript fallback.
+     * button with a title-aware aria-label, and a working noscript fallback — with no
+     * WordPress Media Library poster override set, it renders with no `<img>` (ADR-0001's
+     * 2026-08-25 addendum: no Cloudflare Stream thumbnail fallback), not a broken one.
      */
     public function test_embed_html_renders_the_click_to_load_block(): void
     {
         $html = tube_player_get_embed_html($this->video_id, ['title' => 'My Test Video']);
 
         $expected_embed_url = Tube_Player_Plugin::instance()->video_provider()->embed_url($this->cf_stream_uid);
+        $expected_view_url  = rest_url('tube/v1/videos/' . $this->video_id . '/view');
 
         self::assertStringContainsString('data-tube-player', $html);
         self::assertStringContainsString('data-embed-url="' . esc_url($expected_embed_url) . '"', $html);
+        self::assertStringContainsString('data-view-url="' . esc_url($expected_view_url) . '"', $html);
         self::assertStringContainsString('<button type="button"', $html);
         self::assertStringContainsString('aria-label="Play video: My Test Video"', $html);
-        self::assertStringContainsString('<img ', $html);
+        self::assertStringNotContainsString('<img ', $html);
         self::assertStringContainsString('<noscript>', $html);
         self::assertStringContainsString(esc_url($expected_embed_url), $html);
+    }
+
+    /**
+     * With a WordPress Media Library poster override set, the click-to-load
+     * block's poster `<img>` uses that attachment (ADR-0001).
+     */
+    public function test_embed_html_renders_the_poster_when_a_media_library_override_is_set(): void
+    {
+        $attachment_id = self::create_test_attachment();
+
+        try {
+            Tube_Core_Plugin::instance()->video_metadata_repository()->update_images(
+                $this->video_id,
+                $attachment_id,
+                null
+            );
+
+            $html = tube_player_get_embed_html($this->video_id, ['title' => 'My Test Video']);
+
+            $hero_size    = [ImageSize::Hero->width(), ImageSize::Hero->height()];
+            $expected_src = wp_get_attachment_image_url($attachment_id, $hero_size);
+            self::assertIsString($expected_src);
+
+            self::assertStringContainsString('<img ', $html);
+            self::assertStringContainsString('src="' . esc_url($expected_src) . '"', $html);
+        } finally {
+            wp_delete_attachment($attachment_id, true);
+        }
     }
 
     /**

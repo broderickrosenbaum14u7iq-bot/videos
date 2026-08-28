@@ -321,8 +321,8 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
      * {@inheritDoc}
      *
      * @param int      $video_id        The video post ID.
-     * @param int|null $poster_image_id The Cloudflare Images ID to use as the poster override, or null to clear it.
-     * @param int|null $og_image_id     The Cloudflare Images ID to use as the OG-image override, or null to clear it.
+     * @param int|null $poster_image_id The WordPress attachment ID to use as the poster override, or null to clear.
+     * @param int|null $og_image_id     The WordPress attachment ID to use as the OG-image override, or null to clear.
      */
     public function update_images(int $video_id, ?int $poster_image_id, ?int $og_image_id): void
     {
@@ -369,5 +369,70 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
         );
 
         unset($this->cache[ $video_id ]);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int    $video_id      The video post ID.
+     * @param string $cf_stream_uid The new Cloudflare Stream UID.
+     */
+    public function update_stream_uid(int $video_id, string $cf_stream_uid): void
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
+        $wpdb->update(
+            $wpdb->prefix . 'tube_video_metadata',
+            [
+                'cf_stream_uid' => $cf_stream_uid,
+                'updated_at'    => current_time('mysql', true),
+            ],
+            ['video_id' => $video_id],
+            ['%s', '%s'],
+            ['%d']
+        );
+
+        unset($this->cache[ $video_id ]);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int $limit  How many rows to return.
+     * @param int $offset How many rows to skip.
+     *
+     * @return list<array{video_id: int, cf_stream_uid: string}>
+     */
+    public function all_stream_uids(int $limit, int $offset): array
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                'SELECT video_id, cf_stream_uid FROM %i ORDER BY video_id ASC LIMIT %d OFFSET %d',
+                $wpdb->prefix . 'tube_video_metadata',
+                $limit,
+                $offset
+            ),
+            ARRAY_A
+        );
+
+        /** @var array<int, array{video_id: string, cf_stream_uid: string}> $rows */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+        $rows = (array) $rows;
+
+        $result = [];
+
+        foreach ($rows as $row) {
+            $result[] = [
+                'video_id'      => (int) $row['video_id'],
+                'cf_stream_uid' => $row['cf_stream_uid'],
+            ];
+        }
+
+        return $result;
     }
 }

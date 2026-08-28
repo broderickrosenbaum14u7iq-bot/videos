@@ -106,16 +106,39 @@ interface VideoMetadataRepositoryInterface
 
     /**
      * Update a video's custom poster/OG image overrides, per
-     * ARCHITECTURE.md §8 — both are Cloudflare Images IDs, never URLs.
-     * `tube-admin`'s custom-poster upload UI (Phase 10) is the only
-     * writer of these two columns; a null value clears the override back
-     * to the default Cloudflare Stream thumbnail.
+     * ARCHITECTURE.md §8 (as revised by ADR-0001, and its 2026-08-25
+     * addendum) — both are WordPress Media Library attachment IDs, never
+     * URLs and never Cloudflare Images IDs. `Tube_Admin\Video\PosterImageMetaBox`
+     * is the only writer of `poster_image_id`; `tube-admin`'s
+     * `VideoDetailsScreen` remains the only writer of `og_image_id`. A
+     * null value clears the override to "no image" — there is no
+     * Cloudflare Stream thumbnail fallback to clear back to anymore.
      *
      * @param int      $video_id        The video post ID.
-     * @param int|null $poster_image_id The Cloudflare Images ID to use as the poster override, or null to clear it.
-     * @param int|null $og_image_id     The Cloudflare Images ID to use as the OG-image override, or null to clear it.
+     * @param int|null $poster_image_id The WordPress attachment ID to use as the poster override, or null to clear.
+     * @param int|null $og_image_id     The WordPress attachment ID to use as the OG-image override, or null to clear.
      */
     public function update_images(int $video_id, ?int $poster_image_id, ?int $og_image_id): void;
+
+    /**
+     * Update a video's Cloudflare Stream UID.
+     *
+     * Added alongside ADR-0001: previously `cf_stream_uid` was write-once
+     * at {@see self::create()} time (only ever set by the WP-CLI import
+     * pipeline) with no update path. `tube-admin`'s video edit screen now
+     * lets an administrator manually enter/correct the UID for an
+     * existing video, so a genuine update path is needed. The caller is
+     * responsible for uniqueness validation before calling this (see
+     * {@see self::find_video_id_by_stream_uid()}) — the underlying
+     * `cf_stream_uid_idx` UNIQUE KEY (`Migration001CreateVideoMetadataTable`)
+     * remains the hard backstop against a duplicate actually persisting,
+     * the same division of responsibility `VideoImporter::import()`
+     * already established for the create-time case.
+     *
+     * @param int    $video_id      The video post ID.
+     * @param string $cf_stream_uid The new Cloudflare Stream UID.
+     */
+    public function update_stream_uid(int $video_id, string $cf_stream_uid): void;
 
     /**
      * Update a video's thumbnail source-frame offset (the second within
@@ -126,4 +149,20 @@ interface VideoMetadataRepositoryInterface
      * @param int $thumbnail_time_seconds  The offset, in seconds, to extract the default thumbnail from.
      */
     public function update_thumbnail_time(int $video_id, int $thumbnail_time_seconds): void;
+
+    /**
+     * List every video's ID and Cloudflare Stream UID, one page at a
+     * time, ordered by video_id — the batch-resync read path
+     * `Tube_Core\CLI\StreamCommand` walks the whole catalog with, without
+     * loading it all into memory at once (ARCHITECTURE.md §10's
+     * 500,000+-video scale target). The same `$limit`/`$offset`
+     * do-while-until-a-short-page pagination shape
+     * `Tube_Search\CLI\IndexCommand::rebuild()` already established.
+     *
+     * @param int $limit  How many rows to return.
+     * @param int $offset How many rows to skip.
+     *
+     * @return list<array{video_id: int, cf_stream_uid: string}>
+     */
+    public function all_stream_uids(int $limit, int $offset): array;
 }

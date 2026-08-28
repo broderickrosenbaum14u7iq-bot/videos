@@ -27,12 +27,23 @@ $tube_theme_last_index = count($tube_theme_items) - 1;
 ?>
 <nav class="breadcrumbs" aria-label="<?php echo esc_attr__('Breadcrumb', 'tube-theme'); ?>">
     <?php foreach ($tube_theme_items as $tube_theme_index => $tube_theme_item) : ?>
-        <?php if ($tube_theme_index === $tube_theme_last_index) : ?>
-            <span aria-current="page"><?php echo esc_html($tube_theme_item['name']); ?></span>
+        <?php if (0 === $tube_theme_index) : ?>
+            <a class="breadcrumbs__home" href="<?php echo esc_url($tube_theme_item['url']); ?>">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 11.5 12 4l8 7.5M6 10v9h12v-9" fill="none" stroke="currentColor" stroke-width="2" />
+                </svg>
+                <span class="screen-reader-text"><?php echo esc_html($tube_theme_item['name']); ?></span>
+            </a>
+        <?php elseif ($tube_theme_index === $tube_theme_last_index) : ?>
+            <span class="breadcrumbs__sep" aria-hidden="true">&rsaquo;</span>
+            <span class="breadcrumbs__current" aria-current="page">
+                <?php echo esc_html($tube_theme_item['name']); ?>
+            </span>
         <?php else : ?>
+            <span class="breadcrumbs__sep" aria-hidden="true">&rsaquo;</span>
             <a href="<?php echo esc_url($tube_theme_item['url']); ?>">
                 <?php echo esc_html($tube_theme_item['name']); ?>
-            </a> &raquo;
+            </a>
         <?php endif; ?>
     <?php endforeach; ?>
 </nav>

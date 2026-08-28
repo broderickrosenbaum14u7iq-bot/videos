@@ -1,0 +1,22 @@
+{
+    "name": "phimtoico/tube-ads",
+    "description": "Tube Ads: modular, provider-neutral advertising system (VAST pre-roll, display placements).",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": ">=8.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "Tube_Ads\\": "includes/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tube_Ads\\Tests\\": "tests/"
+        }
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6 || ^10.5"
+    }
+}

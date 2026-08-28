@@ -50,7 +50,7 @@ Changing any of these after this point requires the full post-freeze process (AD
 2. `video` is a Custom Post Type, never the native `post`.
 3. `actor` and `studio` are dedicated tables, never taxonomies.
 4. `video_category` and `video_tag` remain native WordPress taxonomies.
-5. No video/image bytes are ever stored on the WordPress server; only Cloudflare Stream/Images identifiers are persisted, never playback URLs.
+5. No video/image bytes are ever stored on the WordPress server; only Cloudflare Stream/Images identifiers are persisted, never playback URLs. **Partially reversed by ADR-0001 (2026-08-24), further revised by its 2026-08-25 addendum**: the image half of this item — the poster/OG-image is now sourced exclusively from the WordPress Media Library (a WordPress attachment ID, not a Cloudflare Images ID); there is no Cloudflare Stream thumbnail-extraction default/fallback anymore for a video with no attachment set. The video half (no video bytes ever on the WordPress server, playback still constructed from a stored Stream UID at render time) is unchanged. See `adr/0001-media-library-poster-images.md`.
 6. `wp_postmeta` is never used for video data; `wp_tube_video_metadata` and every other dedicated table are the only stores.
 7. Every schema change is a migration with a genuinely reversible `down()`; migrations self-register per plugin rather than being filesystem-discovered.
 8. WP-Cron is never used; every scheduled task runs via Linux cron invoking WP-CLI.

@@ -24,6 +24,7 @@ use Tube_Search\Index\VideoIndexer;
 use Tube_Search\Search\SearchQuery;
 use Tube_Search\Search\SearchRouting;
 use Tube_Search\SchemaMigrations\Migration001CreateSearchIndexTable;
+use Tube_Search\SchemaMigrations\Migration002AddNormalizedSearchText;
 use WP_CLI;
 
 /**
@@ -140,7 +141,10 @@ final class Plugin
     {
         Tube_Core_Plugin::instance()->migration_runner()->register_source(
             'tube-search',
-            [Migration001CreateSearchIndexTable::class]
+            [
+                Migration001CreateSearchIndexTable::class,
+                Migration002AddNormalizedSearchText::class,
+            ]
         );
 
         $this->sync_subscriber()->register();

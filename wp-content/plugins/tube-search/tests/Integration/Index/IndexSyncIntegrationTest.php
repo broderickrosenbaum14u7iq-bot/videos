@@ -115,6 +115,29 @@ final class IndexSyncIntegrationTest extends TestCase
     }
 
     /**
+     * A video with no known Cloudflare Stream duration yet (no
+     * `wp_tube_video_metadata` row at all — a video published via
+     * `Tube_Admin\Video\StreamUidMetaBox` before any Stream UID sync has
+     * happened, or a video for which `wp_tube_video_metadata.duration_seconds`
+     * is genuinely `NULL`) must index with a `NULL` `duration_seconds`,
+     * never `0`. Regression test for a real bug found live: `$wpdb->prepare()`'s
+     * `%d` placeholder silently casts `null` to `0`
+     * (`SearchIndexRepository::upsert()` used `%d` unconditionally for
+     * this column), which the frontend then rendered as a fabricated
+     * "0:00" instead of correctly omitting the duration badge for a
+     * genuinely-unknown duration.
+     */
+    public function test_publishing_a_video_with_no_known_duration_indexes_a_null_duration_not_zero(): void
+    {
+        $video_id = $this->create_published_video('No Duration Yet Sync Test Video');
+
+        $row = Tube_Search_Plugin::instance()->search_index_repository()->find($video_id);
+
+        self::assertNotNull($row);
+        self::assertNull($row->duration_seconds);
+    }
+
+    /**
      * A real wp_tube_video_actors assignment is picked up on resync — the
      * gap this phase fixed (VideoIndexer previously only preserved
      * whatever actor_ids the index already had, never reading the real

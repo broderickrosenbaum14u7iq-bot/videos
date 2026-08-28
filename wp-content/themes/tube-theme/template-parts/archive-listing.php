@@ -74,6 +74,18 @@ $tube_theme_heading_tag = isset($args['heading_tag']) && 'h2' === $args['heading
     <div class="archive-description"><?php echo wp_kses_post($tube_theme_description); ?></div>
 <?php endif; ?>
 
+<?php if ($tube_theme_result->total > 0) : ?>
+    <p class="archive-count">
+        <?php
+        printf(
+            /* translators: %s: formatted video count. */
+            esc_html__('%s video', 'tube-theme'),
+            esc_html(number_format_i18n($tube_theme_result->total))
+        );
+        ?>
+    </p>
+<?php endif; ?>
+
 <?php
 $tube_theme_total_pages = (int) ceil($tube_theme_result->total / $tube_theme_result->per_page);
 
