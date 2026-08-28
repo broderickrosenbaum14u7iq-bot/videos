@@ -150,14 +150,48 @@ final class HeaderAccountRenderer
                         </button>
                     </form>
 
-                    <a class="tube-auth-modal__link" href="<?php echo esc_url(wp_lostpassword_url($current_url)); ?>">
+                    <button type="button" class="tube-auth-modal__link" data-tube-auth-switch="forgot-password">
                         <?php esc_html_e('Quên mật khẩu?', 'tube-members'); ?>
-                    </a>
+                    </button>
 
                     <p class="tube-auth-modal__switch">
                         <?php esc_html_e('Chưa có tài khoản?', 'tube-members'); ?>
                         <button type="button" data-tube-auth-switch="register">
                             <?php esc_html_e('Đăng ký', 'tube-members'); ?>
+                        </button>
+                    </p>
+                </div>
+
+                <div data-tube-auth-view="forgot-password" hidden>
+                    <h2 class="tube-auth-modal__title"><?php esc_html_e('Quên mật khẩu?', 'tube-members'); ?></h2>
+                    <p class="tube-auth-modal__hint">
+                        <?php
+                        esc_html_e(
+                            'Nhập email hoặc tên đăng nhập của bạn, chúng tôi sẽ gửi liên kết đặt lại mật khẩu.',
+                            'tube-members'
+                        );
+                        ?>
+                    </p>
+
+                    <form data-tube-auth-form="forgot-password" novalidate>
+                        <p class="tube-auth-modal__error" data-tube-auth-error hidden></p>
+                        <p
+                            class="tube-auth-modal__error tube-reset-page__success"
+                            data-tube-auth-forgot-success
+                            hidden
+                        ></p>
+                        <label class="tube-auth-modal__field">
+                            <?php esc_html_e('Email hoặc tên đăng nhập', 'tube-members'); ?>
+                            <input type="text" name="login" autocomplete="username" required>
+                        </label>
+                        <button type="submit" class="tube-auth-modal__submit">
+                            <?php esc_html_e('Gửi liên kết đặt lại', 'tube-members'); ?>
+                        </button>
+                    </form>
+
+                    <p class="tube-auth-modal__switch">
+                        <button type="button" data-tube-auth-switch="login">
+                            <?php esc_html_e('Quay lại đăng nhập', 'tube-members'); ?>
                         </button>
                     </p>
                 </div>
@@ -270,6 +304,8 @@ final class HeaderAccountRenderer
             [
                 'loginUrl'              => esc_url_raw(rest_url('tube/v1/auth/login')),
                 'registerUrl'           => esc_url_raw(rest_url('tube/v1/auth/register')),
+                'forgotPasswordUrl'     => esc_url_raw(rest_url('tube/v1/auth/forgot-password')),
+                'resetPasswordUrl'      => esc_url_raw(rest_url('tube/v1/auth/reset-password')),
                 'logoutUrl'             => esc_url_raw(rest_url('tube/v1/auth/logout')),
                 'meUrl'                 => esc_url_raw(rest_url('tube/v1/members/me')),
                 'resendVerificationUrl' => esc_url_raw(rest_url('tube/v1/members/me/resend-verification')),

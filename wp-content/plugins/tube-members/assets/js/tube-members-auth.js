@@ -41,6 +41,7 @@
 
 			if (isTarget) {
 				clearError(views[i]);
+				clearForgotSuccess(views[i]);
 			}
 		}
 	}
@@ -156,6 +157,15 @@
 
 	function clearError(view) {
 		var el = view.querySelector('[data-tube-auth-error]');
+
+		if (el) {
+			el.hidden = true;
+			el.textContent = '';
+		}
+	}
+
+	function clearForgotSuccess(view) {
+		var el = view.querySelector('[data-tube-auth-forgot-success]');
 
 		if (el) {
 			el.hidden = true;
@@ -412,7 +422,7 @@
 					password: form.password.value,
 					remember: true,
 				};
-			} else {
+			} else if ('register' === kind) {
 				url = config.registerUrl;
 				body = {
 					display_name: form.display_name.value,
@@ -420,10 +430,35 @@
 					password: form.password.value,
 					password_confirm: form.password_confirm.value,
 				};
+			} else {
+				// 'forgot-password' -- does not authenticate anyone;
+				// handled entirely below, never falls through to
+				// fetchProfileAndFinish()/closeModal().
+				url = config.forgotPasswordUrl;
+				body = { login: form.login.value };
 			}
 
 			postJson(url, body)
 				.then(function (result) {
+					if ('forgot-password' === kind) {
+						if (result.ok && result.data && result.data.success) {
+							var successEl = view.querySelector('[data-tube-auth-forgot-success]');
+
+							if (successEl) {
+								successEl.textContent = result.data.message;
+								successEl.hidden = false;
+							}
+
+							form.reset();
+
+							return;
+						}
+
+						showError(view, firstErrorMessage(result.data ? result.data.errors : null));
+
+						return;
+					}
+
 					if (result.ok && result.data && result.data.success) {
 						// Adopt the fresh nonce BEFORE the /members/me
 						// fetch below -- that call is itself gated by
@@ -451,6 +486,86 @@
 				});
 		});
 	}
+
+	/* ---- Reset-password landing page (/dat-lai-mat-khau/) --------------
+	   Not inside the modal -- this page has no [data-tube-auth-modal]
+	   wrapper at all -- so it gets its own small, self-contained
+	   handler rather than trying to route it through the modal-scoped
+	   submit listener above. Reuses postJson()/firstErrorMessage() (both
+	   already generic, take no modal-specific argument) but not
+	   showError()/clearError() (both require a `view` element shaped
+	   like a modal view, which this page's markup deliberately doesn't
+	   replicate). */
+	(function () {
+		var resetForm = document.querySelector('[data-tube-reset-form]');
+
+		if (!resetForm) {
+			return;
+		}
+
+		resetForm.addEventListener('submit', function (event) {
+			event.preventDefault();
+
+			var errorEl = resetForm.querySelector('[data-tube-reset-error]');
+			var submitBtn = resetForm.querySelector('.tube-auth-modal__submit');
+
+			if (errorEl) {
+				errorEl.hidden = true;
+				errorEl.textContent = '';
+			}
+
+			if (submitBtn) {
+				submitBtn.disabled = true;
+			}
+
+			postJson(config.resetPasswordUrl, {
+				login: resetForm.login.value,
+				key: resetForm.key.value,
+				new_password: resetForm.new_password.value,
+				new_password_confirm: resetForm.new_password_confirm.value,
+			})
+				.then(function (result) {
+					if (result.ok && result.data && result.data.success) {
+						if (result.data.rest_nonce) {
+							config.restNonce = result.data.rest_nonce;
+						}
+
+						config.isLoggedIn = true;
+						config.isEmailVerified = !!(result.data.user && result.data.user.email_verified);
+
+						// No header/modal on this standalone page to
+						// update in place -- a full reload is simplest
+						// and correct here, and lands the now-logged-in
+						// visitor back on a normal page with the real
+						// header state (unlike the modal's in-place
+						// update, there's no "close and resume" state to
+						// preserve on a dedicated landing page).
+						window.location.href = config.accountUrl || '/';
+
+						return;
+					}
+
+					if (errorEl) {
+						errorEl.textContent = firstErrorMessage(result.data ? result.data.errors : null);
+						errorEl.hidden = false;
+					}
+
+					if (submitBtn) {
+						submitBtn.disabled = false;
+					}
+				})
+				.catch(function () {
+					if (errorEl) {
+						errorEl.textContent = 'Không thể kết nối máy chủ. Vui lòng thử lại.';
+						errorEl.hidden = false;
+					}
+
+					if (submitBtn) {
+						submitBtn.disabled = false;
+					}
+				});
+		});
+	})();
 
 	/**
 	 * Login/register responses don't include an avatar URL (the account

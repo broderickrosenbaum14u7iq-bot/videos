@@ -11,11 +11,15 @@ namespace Tube_Members;
 
 use Predis\Client;
 use Tube_Members\Auth\AuthSessionService;
+use Tube_Members\Auth\ForgotPasswordController;
 use Tube_Members\Auth\LoginController;
 use Tube_Members\Auth\LoginService;
 use Tube_Members\Auth\LogoutController;
+use Tube_Members\Auth\PasswordResetEmailSender;
+use Tube_Members\Auth\PasswordResetService;
 use Tube_Members\Auth\RegistrationController;
 use Tube_Members\Auth\RegistrationService;
+use Tube_Members\Auth\ResetPasswordController;
 use Tube_Members\Capability\MemberRoleGuard;
 use Tube_Members\Email\EmailVerificationService;
 use Tube_Members\Email\ResendVerificationController;
@@ -30,6 +34,7 @@ use Tube_Members\Profile\ProfileController;
 use Tube_Members\Render\HeaderAccountRenderer;
 use Tube_Members\Routing\AccountRouting;
 use Tube_Members\Routing\EmailVerificationRouting;
+use Tube_Members\Routing\PasswordResetRouting;
 use Tube_Members\Support\RedisRateLimiter;
 
 /**
@@ -133,6 +138,12 @@ final class Plugin
         add_filter('query_vars', [$email_verification_routing, 'register_query_var']);
         add_filter('template_include', [$email_verification_routing, 'route_template']);
 
+        $password_reset_routing = new PasswordResetRouting();
+
+        add_action('init', [$password_reset_routing, 'add_rewrite_rules']);
+        add_filter('query_vars', [$password_reset_routing, 'register_query_var']);
+        add_filter('template_include', [$password_reset_routing, 'route_template']);
+
         $role_guard = new MemberRoleGuard();
 
         add_action('admin_init', [$role_guard, 'block_backend_access']);
@@ -161,6 +172,7 @@ final class Plugin
     {
         (new AccountRouting())->add_rewrite_rules();
         (new EmailVerificationRouting())->add_rewrite_rules();
+        (new PasswordResetRouting())->add_rewrite_rules();
         flush_rewrite_rules();
     }
 
@@ -209,6 +221,36 @@ final class Plugin
             [
                 'methods'             => 'POST',
                 'callback'            => [$login_controller, 'handle'],
+                'permission_callback' => '__return_true',
+            ]
+        );
+
+        $forgot_password_controller = new ForgotPasswordController(
+            new PasswordResetService($this->rate_limiter(), new PasswordResetEmailSender())
+        );
+
+        register_rest_route(
+            'tube/v1',
+            '/auth/forgot-password',
+            [
+                'methods'             => 'POST',
+                'callback'            => [$forgot_password_controller, 'handle'],
+                'permission_callback' => '__return_true',
+            ]
+        );
+
+        $reset_password_controller = new ResetPasswordController(
+            new PasswordResetService($this->rate_limiter(), new PasswordResetEmailSender()),
+            $this->auth_session(),
+            $this->email_verification_service()
+        );
+
+        register_rest_route(
+            'tube/v1',
+            '/auth/reset-password',
+            [
+                'methods'             => 'POST',
+                'callback'            => [$reset_password_controller, 'handle'],
                 'permission_callback' => '__return_true',
             ]
         );
