@@ -28,6 +28,7 @@ use Tube_Core\Content\VideoPostType;
 use Tube_Core\Database\SchemaVersionStore;
 use Tube_Core\Engagement\GuestMergeService;
 use Tube_Core\Events\Dispatcher;
+use Tube_Core\Events\VideoDeletionCascadeSubscriber;
 use Tube_Core\Events\VideoLifecycleEvents;
 use Tube_Core\Events\WordPressHookBus;
 use Tube_Core\Import\BatchProcessor;
@@ -246,6 +247,7 @@ final class Plugin
 
         (new VideoLifecycleEvents($this->events()))->register();
         (new ViewBaselineSubscriber($this->video_statistics_repository()))->register();
+        (new VideoDeletionCascadeSubscriber())->register();
 
         add_action('rest_api_init', [$this, 'register_rest_routes']);
 

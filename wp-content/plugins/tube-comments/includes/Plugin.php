@@ -18,6 +18,7 @@ use Tube_Comments\Comments\Repositories\CommentLikeRepository;
 use Tube_Comments\Comments\Repositories\CommentReportRepository;
 use Tube_Comments\Comments\Repositories\CommentRepository;
 use Tube_Comments\Comments\Repositories\CommentRootLockRepository;
+use Tube_Comments\Events\VideoDeletionCascadeSubscriber;
 use Tube_Comments\Http\CommentCreateController;
 use Tube_Comments\Http\CommentDeleteController;
 use Tube_Comments\Http\CommentLikeController;
@@ -186,6 +187,8 @@ final class Plugin
 
         add_action('admin_menu', [$moderation_screen, 'register_menu']);
         add_action('admin_post_tube_comments_moderate', [$moderation_screen, 'handle_action']);
+
+        (new VideoDeletionCascadeSubscriber())->register();
 
         add_action('rest_api_init', [$this, 'register_rest_routes']);
     }
