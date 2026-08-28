@@ -46,7 +46,7 @@ Columns 1–7 map to the review's first seven questions (stable for 12 months / 
 
 Changing any of these after this point requires the full post-freeze process (ADR, migration plan, rollback plan, impact analysis) in `DEVELOPMENT_RULES.md`.
 
-1. Six independent plugins (`tube-core`, `tube-cache`, `tube-search`, `tube-player`, `tube-seo`, `tube-admin`) plus a presentation-only theme — no plugin depends on another's internals or database tables directly; only `tube-core` has no plugin dependency.
+1. Independent plugins plus a presentation-only theme — no plugin depends on another's internals or database tables directly; only `tube-core` has no plugin dependency. Originally six (`tube-core`, `tube-cache`, `tube-search`, `tube-player`, `tube-seo`, `tube-admin`). **Extended to nine by ADR-0002/0003/0004 (2026-08-28, filed retroactively as part of P0 release remediation)**: `tube-members` (accounts/auth/OAuth), `tube-comments` (public comments, the one addition that owns its own database tables rather than routing through `tube-core` — see ADR-0003's Impact analysis for why that's a deliberate, freeze-document-anticipated variation, not a violation), and `tube-ads` (VAST ad placements, no database schema at all). The "no plugin depends on another's internals or database tables directly" clause is unchanged and was verified to still hold for all three additions at filing time.
 2. `video` is a Custom Post Type, never the native `post`.
 3. `actor` and `studio` are dedicated tables, never taxonomies.
 4. `video_category` and `video_tag` remain native WordPress taxonomies.

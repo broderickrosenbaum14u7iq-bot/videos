@@ -20,6 +20,22 @@ A pre-existing gap found during this change's investigation — `tube-seo`'s `Se
 
 ---
 
+## 2026-08-28 — ADR-0002/0003/0004: three plugins added, filed retroactively (frozen decision extension)
+
+Source: `adr/0002-tube-members-plugin.md`, `adr/0003-tube-comments-plugin.md`, `adr/0004-tube-ads-plugin.md`. This **is** a technical architecture change under `DEVELOPMENT_RULES.md` §8 — it extends `ARCHITECTURE_FREEZE.md`'s Frozen Decision #1 from six plugins to nine.
+
+**Governance note, stated plainly**: these three plugins (`tube-members`, `tube-comments`, `tube-ads`) were built and shipped during the same run of feature-development work that produced the Phase 13 production UI and the subsequent theme redesign, without an ADR at the time — a direct process violation of §8's "no exceptions" requirement. This was found by an independent Release Readiness Audit on 2026-08-28 (recorded as that audit's BLOCKER-2) and is being corrected here, as part of that audit's P0 remediation, by filing the ADRs that should have existed from the start. The three ADRs are written truthfully against the code as it actually exists today, not reconstructed as if written first — see each ADR's own "Retroactive filing" section.
+
+**Trigger** (all three): new functional requirement — none of accounts/auth, public comments, or ad monetization exist anywhere in the frozen Phase 0–13 architecture, and none could have been anticipated at freeze time (which was scoped entirely to content delivery and discovery). No benchmark or production incident is involved in any of the three.
+
+**What changed**: `tube-members` (WordPress-native `wp_users`/`wp_usermeta`-backed accounts, email/password + Google OAuth, no custom schema); `tube-comments` (comments/likes/reports on five self-owned tables, migrated through `tube-core`'s existing shared migration-runner registration point — the one genuine cross-plugin touchpoint among the three, and an already-frozen mechanism per Frozen Decision #7, not a new one); `tube-ads` (VAST ad placements, `wp_options`-only, no schema, no cross-plugin dependency at all). Full detail, alternatives considered, migration/rollback plans, and impact analysis in each ADR.
+
+**Verified at filing time**: none of the six originally-frozen plugins required modification for any of the three additions (confirmed by repo-wide dependency grep — no new plugin holds a runtime `use` dependency on another's internals, only `tube-comments`' documented migration-runner registration call into `tube-core`'s public accessor). All three pass their own test suites (`tube-members` 24/24, `tube-comments` 39/39, `tube-ads` 17/17 unit tests) with 0 PHPCS/PHPStan errors as of the same 2026-08-28 audit.
+
+**Also recorded in the same audit, tracked separately, not part of this ADR**: two security defects specific to `tube-members`' auth flow (OAuth account-linking, login rate-limiter fail-open behavior) and a data-integrity gap in `tube-comments`/`tube-core` (no cascade cleanup on video delete) — all being remediated as their own separately-tracked P0/P1 items with their own commits, not folded into this governance filing.
+
+---
+
 ## 2026-08-25 — ADR-0001 addendum: Cloudflare Stream thumbnail default removed
 
 Source: `adr/0001-media-library-poster-images.md`'s "Addendum (2026-08-25)" section. Further reverses `ARCHITECTURE_FREEZE.md` Frozen Decision #5's image half, on top of ADR-0001's original (2026-08-24) reversal.
