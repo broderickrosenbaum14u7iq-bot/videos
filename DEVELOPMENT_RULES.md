@@ -38,7 +38,7 @@ This file is the canonical, durable record of every process and quality rule gov
 
 ## 3. Environment
 
-- **Never modify production** (`root@139.99.96.155:/www/wwwroot/phimtoico.org`). All implementation work happens only in the local Docker staging environment (`docker-compose.yml`, see `PHASE-0.md` for how to bring it up).
+- **Production deployment by an AI assistant is prohibited by default. It is permitted only when the project owner explicitly authorizes a production deployment in the current conversation. Before modifying production, the assistant must create or verify a rollback point/backup, preserve persistent production data and secrets, deploy only an explicitly approved commit/tag, perform a production health check, and rollback on a severe regression.** Absent that explicit, in-conversation authorization, all implementation work happens only in the local Docker staging environment (`docker-compose.yml`, see `PHASE-0.md` for how to bring it up) against `root@139.99.96.155:/www/wwwroot/phimtoico.org`.
 - **WP-Cron is never used.** Every background/scheduled task runs via Linux cron invoking WP-CLI directly (`ops/cron/staging.cron`), per `ARCHITECTURE.md` §7. `DISABLE_WP_CRON` is set to `true`.
 
 ## 4. Commit discipline
