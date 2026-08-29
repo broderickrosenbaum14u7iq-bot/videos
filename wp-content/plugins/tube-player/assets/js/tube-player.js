@@ -1,11 +1,14 @@
 /**
- * tube-player click-to-load: swaps a poster for a real iframe on
- * activation, and records one view. No framework, no build step -- both
- * the embed URL and the view-recording URL are already server-rendered
- * into data-embed-url/data-view-url (ARCHITECTURE.md §12 Phase 6; view
- * recording added 2026-08-25), so this script never constructs a URL
- * itself. One delegated document-level listener handles every player on
- * the page instead of one listener per instance.
+ * tube-player click-to-load: swaps a poster for a real iframe (Cloudflare
+ * Stream) or a native <video> (R2/direct MP4) on activation, and records
+ * one view. No framework, no build step -- the embed URL, which element
+ * to build, and the view-recording URL are already server-rendered into
+ * data-embed-url/data-source-type/data-view-url (ARCHITECTURE.md §12
+ * Phase 6; view recording added 2026-08-25; data-source-type added
+ * alongside R2/direct-MP4 support), so this script never constructs a
+ * URL itself and never guesses which element a source needs. One
+ * delegated document-level listener handles every player on the page
+ * instead of one listener per instance.
  */
 (function () {
     'use strict';
@@ -31,6 +34,41 @@
         });
     }
 
+    function buildStreamIframe(player, embedUrl) {
+        var iframe = document.createElement('iframe');
+        iframe.src = embedUrl;
+        iframe.title = player.getAttribute('data-title') || '';
+        iframe.allow = 'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture';
+        iframe.allowFullscreen = true;
+
+        return iframe;
+    }
+
+    function buildR2Video(player, embedUrl) {
+        // The browser fetches bytes directly from the configured R2
+        // domain -- this element's src is the same pre-built,
+        // server-rendered URL data-embed-url already carries for the
+        // Stream case, never proxied through this site's own server.
+        var video = document.createElement('video');
+        video.controls = true;
+        video.autoplay = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
+
+        var posterImg = player.querySelector('.tube-player__poster');
+
+        if (posterImg) {
+            video.poster = posterImg.currentSrc || posterImg.src;
+        }
+
+        var source = document.createElement('source');
+        source.src = embedUrl;
+        source.type = 'video/mp4';
+        video.appendChild(source);
+
+        return video;
+    }
+
     function activate(player) {
         if (player.hasAttribute('data-tube-player-active')) {
             return;
@@ -42,17 +80,16 @@
             return;
         }
 
-        var iframe = document.createElement('iframe');
-        iframe.src = embedUrl;
-        iframe.title = player.getAttribute('data-title') || '';
-        iframe.allow = 'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture';
-        iframe.allowFullscreen = true;
+        var sourceType = player.getAttribute('data-source-type');
+        var element = 'r2_mp4' === sourceType
+            ? buildR2Video(player, embedUrl)
+            : buildStreamIframe(player, embedUrl);
 
         player.textContent = '';
-        player.appendChild(iframe);
+        player.appendChild(element);
         player.setAttribute('data-tube-player-active', '');
 
-        iframe.focus();
+        element.focus();
 
         // Reuses the same data-tube-player-active guard above -- this
         // function already returns early on a second activation attempt

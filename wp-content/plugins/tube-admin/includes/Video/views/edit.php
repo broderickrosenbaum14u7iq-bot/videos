@@ -79,10 +79,23 @@ $tube_admin_back_url = remove_query_arg(['video_id', 'saved']);
         </div>
     <?php else : ?>
         <table class="form-table" role="presentation">
+            <?php $tube_admin_is_r2 = \Tube_Core\Video\VideoSource::R2Mp4 === $metadata->source; ?>
             <tr>
-                <th scope="row"><?php esc_html_e('Cloudflare Stream UID', 'tube-admin'); ?></th>
+                <th scope="row">
+                    <?php
+                    echo esc_html(
+                        $tube_admin_is_r2
+                            ? __('R2 object key', 'tube-admin')
+                            : __('Cloudflare Stream UID', 'tube-admin')
+                    );
+                    ?>
+                </th>
+                <?php
+                $tube_admin_source_value = $tube_admin_is_r2 ? $metadata->r2_object_key : $metadata->cf_stream_uid;
+                $tube_admin_source_value = $tube_admin_source_value ?? '';
+                ?>
                 <td>
-                    <code><?php echo esc_html($metadata->cf_stream_uid); ?></code>
+                    <code><?php echo esc_html($tube_admin_source_value); ?></code>
                     <?php if (null !== $tube_admin_post_edit_url) : ?>
                         &nbsp;
                         <a href="<?php echo esc_url($tube_admin_post_edit_url); ?>">

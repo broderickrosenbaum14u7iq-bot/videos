@@ -13,6 +13,7 @@ use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Tube_Core\Video\CfStreamStatus;
 use Tube_Core\Video\Repositories\VideoMetadataRepository;
+use Tube_Core\Video\VideoSource;
 
 /**
  * `find()` is Phase 6's read path for tube-player — this confirms it
@@ -333,5 +334,77 @@ final class VideoMetadataRepositoryIntegrationTest extends TestCase
 
         self::assertNotNull($found, 'The created video must appear somewhere in the paginated walk.');
         self::assertSame($cf_stream_uid, $found['cf_stream_uid']);
+    }
+
+    /**
+     * A video with no metadata row at all defaults to nothing stored yet
+     * — this is the "never created" state, distinct from {@see self::test_find_round_trips_an_r2_video()}'s
+     * "created as R2" state. `create()`'s own CloudflareStream-defaulting
+     * behavior (the backward-compatibility contract every pre-existing
+     * Stream video relies on) is already covered by the existing
+     * Stream-focused tests above, which never explicitly assert
+     * `source`; this confirms it directly.
+     */
+    public function test_create_defaults_source_to_cloudflare_stream(): void
+    {
+        $this->repository->create($this->video_id, 'uid-' . uniqid('', true), CfStreamStatus::Ready);
+
+        $metadata = $this->repository->find($this->video_id);
+
+        self::assertNotNull($metadata);
+        self::assertSame(VideoSource::CloudflareStream, $metadata->source);
+        self::assertNull($metadata->r2_object_key);
+    }
+
+    /**
+     * `create_r2()` round-trips every R2-specific field, and never sets a
+     * Cloudflare Stream UID.
+     */
+    public function test_create_r2_round_trips_the_stored_object_key(): void
+    {
+        $object_key = 'videos/r2-test-' . uniqid('', true) . '.mp4';
+
+        $this->repository->create_r2($this->video_id, $object_key, CfStreamStatus::Ready);
+
+        $metadata = $this->repository->find($this->video_id);
+
+        self::assertNotNull($metadata);
+        self::assertSame(VideoSource::R2Mp4, $metadata->source);
+        self::assertSame($object_key, $metadata->r2_object_key);
+        self::assertNull($metadata->cf_stream_uid);
+        self::assertSame(CfStreamStatus::Ready, $metadata->cf_status);
+    }
+
+    /**
+     * `find_video_id_by_r2_object_key()` resolves a real stored key, and
+     * returns null for one that was never stored — the R2 counterpart to
+     * the existing Stream UID lookup tests.
+     */
+    public function test_find_video_id_by_r2_object_key_resolves_a_real_key(): void
+    {
+        $object_key = 'videos/r2-lookup-' . uniqid('', true) . '.mp4';
+
+        self::assertNull($this->repository->find_video_id_by_r2_object_key($object_key));
+
+        $this->repository->create_r2($this->video_id, $object_key, CfStreamStatus::Ready);
+
+        self::assertSame($this->video_id, $this->repository->find_video_id_by_r2_object_key($object_key));
+    }
+
+    /**
+     * `update_r2_object_key()` changes the stored key for a video that
+     * already has R2 metadata, and the old key no longer resolves to it.
+     */
+    public function test_update_r2_object_key_replaces_the_stored_key(): void
+    {
+        $original = 'videos/r2-original-' . uniqid('', true) . '.mp4';
+        $updated  = 'videos/r2-updated-' . uniqid('', true) . '.mp4';
+
+        $this->repository->create_r2($this->video_id, $original, CfStreamStatus::Ready);
+        $this->repository->update_r2_object_key($this->video_id, $updated);
+
+        self::assertSame($updated, $this->repository->find($this->video_id)?->r2_object_key);
+        self::assertNull($this->repository->find_video_id_by_r2_object_key($original));
+        self::assertSame($this->video_id, $this->repository->find_video_id_by_r2_object_key($updated));
     }
 }

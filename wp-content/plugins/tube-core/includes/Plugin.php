@@ -52,6 +52,7 @@ use Tube_Core\SchemaMigrations\Migration010SeparateLegacyCloudflareImageIds;
 use Tube_Core\SchemaMigrations\Migration011CreateVideoLikesTable;
 use Tube_Core\SchemaMigrations\Migration012AddLikesTotalToVideoStatistics;
 use Tube_Core\SchemaMigrations\Migration013CreateSavedVideosTable;
+use Tube_Core\SchemaMigrations\Migration014AddVideoSourceAndR2Fields;
 use Tube_Core\Saves\Repositories\SavedVideoRepository;
 use Tube_Core\Saves\Repositories\SavedVideoRepositoryInterface;
 use Tube_Core\Saves\SaveController;
@@ -63,6 +64,8 @@ use Tube_Core\Stream\StreamStatusUpdater;
 use Tube_Core\Stream\WebhookController;
 use Tube_Core\Stream\WebhookSignatureVerifier;
 use Tube_Core\Support\RedisRateLimiter;
+use Tube_Core\Video\R2\R2MediaUrlNormalizer;
+use Tube_Core\Video\R2\R2VideoValidator;
 use Tube_Core\Video\Repositories\VideoMetadataRepository;
 use Tube_Core\Video\Repositories\VideoMetadataRepositoryInterface;
 use Tube_Core\Views\RedisViewCounter;
@@ -150,6 +153,28 @@ final class Plugin
      * @var StreamMetadataSyncer|null
      */
     private ?StreamMetadataSyncer $stream_metadata_syncer = null;
+
+    /**
+     * Lazily created by self::status_updater() — shared by both the
+     * Cloudflare Stream and R2/direct-MP4 save paths.
+     *
+     * @var StreamStatusUpdater|null
+     */
+    private ?StreamStatusUpdater $status_updater = null;
+
+    /**
+     * Lazily created by self::r2_media_url_normalizer().
+     *
+     * @var R2MediaUrlNormalizer|null
+     */
+    private ?R2MediaUrlNormalizer $r2_media_url_normalizer = null;
+
+    /**
+     * Lazily created by self::r2_video_validator().
+     *
+     * @var R2VideoValidator|null
+     */
+    private ?R2VideoValidator $r2_video_validator = null;
 
     /**
      * Lazily created by self::video_statistics_repository().
@@ -322,6 +347,7 @@ final class Plugin
                     Migration011CreateVideoLikesTable::class,
                     Migration012AddLikesTotalToVideoStatistics::class,
                     Migration013CreateSavedVideosTable::class,
+                    Migration014AddVideoSourceAndR2Fields::class,
                 ]
             );
         }
@@ -486,11 +512,68 @@ final class Plugin
         if (null === $this->stream_metadata_syncer) {
             $this->stream_metadata_syncer = new StreamMetadataSyncer(
                 $this->stream_details_provider(),
-                new StreamStatusUpdater($this->video_metadata_repository(), $this->events())
+                $this->status_updater()
             );
         }
 
         return $this->stream_metadata_syncer;
+    }
+
+    /**
+     * The shared status/duration-update applier — writes
+     * `cf_status`/`duration_seconds`, dispatches `EventCatalog::VIDEO_STREAM_STATUS_CHANGED`
+     * on a real change, and auto-publishes a still-draft video on
+     * `Ready`. Shared by {@see self::stream_metadata_syncer()} (Cloudflare
+     * Stream, resolves a video ID from a UID first) and
+     * `Tube_Admin\Video\StreamUidMetaBox`'s R2/direct-MP4 save path
+     * (already knows its video ID, calls {@see StreamStatusUpdater::handle_for_video()}
+     * directly) — one update-and-sync mechanism for both sources, per
+     * this feature's own "no source-specific duplicate implementation"
+     * requirement.
+     */
+    public function status_updater(): StreamStatusUpdater
+    {
+        if (null === $this->status_updater) {
+            $this->status_updater = new StreamStatusUpdater($this->video_metadata_repository(), $this->events());
+        }
+
+        return $this->status_updater;
+    }
+
+    /**
+     * Normalizes/resolves R2 object keys against the one configured
+     * public R2 base URL (`TUBE_CORE_R2_MEDIA_BASE_URL`) — shared by
+     * `Tube_Admin\Video\StreamUidMetaBox` (validating/normalizing an
+     * admin's submitted R2 URL or key) and `tube-player`'s render path
+     * (resolving a stored key back to a real URL), so the one trusted
+     * base domain lives in exactly one place.
+     */
+    public function r2_media_url_normalizer(): R2MediaUrlNormalizer
+    {
+        if (null === $this->r2_media_url_normalizer) {
+            $base_url = defined('TUBE_CORE_R2_MEDIA_BASE_URL') && is_string(TUBE_CORE_R2_MEDIA_BASE_URL)
+                ? TUBE_CORE_R2_MEDIA_BASE_URL
+                : '';
+
+            $this->r2_media_url_normalizer = new R2MediaUrlNormalizer($base_url);
+        }
+
+        return $this->r2_media_url_normalizer;
+    }
+
+    /**
+     * The live R2 reachability/content-type check — the R2 counterpart
+     * to {@see self::stream_details_provider()}, called synchronously at
+     * save time (no Cloudflare-style encoding pipeline to poll later for
+     * this source).
+     */
+    public function r2_video_validator(): R2VideoValidator
+    {
+        if (null === $this->r2_video_validator) {
+            $this->r2_video_validator = new R2VideoValidator();
+        }
+
+        return $this->r2_video_validator;
     }
 
     /**

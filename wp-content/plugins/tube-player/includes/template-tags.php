@@ -27,6 +27,7 @@
 declare(strict_types=1);
 
 use Tube_Core\Plugin as Tube_Core_Plugin;
+use Tube_Core\Video\VideoSource;
 use Tube_Player\Video\ImageSize;
 
 /**
@@ -139,13 +140,52 @@ function tube_player_get_embed_html(int $video_id, array $args = []): string
         true
     );
 
+    $r2_playback_url = VideoSource::R2Mp4 === $metadata->source && null !== $metadata->r2_object_key
+        ? Tube_Core_Plugin::instance()->r2_media_url_normalizer()->public_url($metadata->r2_object_key)
+        : null;
+
     return \Tube_Player\Plugin::instance()->player_renderer()->render(
         $video_id,
+        $metadata->source,
         $metadata->cf_stream_uid,
+        $r2_playback_url,
         $metadata->cf_status,
         $metadata->poster_image_id,
         $args
     );
+}
+
+/**
+ * The real, fetchable playback URL for one video, regardless of source —
+ * a Cloudflare Stream click-to-load iframe embed URL, or a direct R2 MP4
+ * URL. Never constructed/guessed by a caller; always resolved through
+ * this one function so SEO (`Tube_Seo\Head\SeoHead`) and the sitemap
+ * (`Tube_Seo\Sitemap\SitemapGenerator`) — which both need "the URL a
+ * visitor's player would actually load," not the click-to-load wrapper
+ * markup `tube_player_get_embed_html()` renders — share the exact same
+ * source-resolution logic `tube_player_get_embed_html()` itself uses,
+ * rather than each re-implementing the `VideoSource` branch.
+ *
+ * @param int $video_id The video post ID.
+ *
+ * @return string The resolved URL, or '' if the video has no metadata row or no resolvable identifier.
+ */
+function tube_player_get_source_url(int $video_id): string
+{
+    $metadata = Tube_Core_Plugin::instance()->video_metadata_repository()->find($video_id);
+
+    if (null === $metadata) {
+        return '';
+    }
+
+    return match ($metadata->source) {
+        VideoSource::CloudflareStream => null === $metadata->cf_stream_uid
+            ? ''
+            : \Tube_Player\Plugin::instance()->video_provider()->embed_url($metadata->cf_stream_uid),
+        VideoSource::R2Mp4 => null === $metadata->r2_object_key
+            ? ''
+            : Tube_Core_Plugin::instance()->r2_media_url_normalizer()->public_url($metadata->r2_object_key),
+    };
 }
 
 /**

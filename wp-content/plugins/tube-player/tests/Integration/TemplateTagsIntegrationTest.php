@@ -294,6 +294,144 @@ final class TemplateTagsIntegrationTest extends TestCase
     }
 
     /**
+     * The real R2 object this project's own R2 support was built/tested
+     * against (a genuine Vietnamese filename with combining diacritics)
+     * — used read-only here, exactly as this feature's own testing
+     * instructions direct; never modified/deleted.
+     */
+    private const REAL_R2_OBJECT_KEY = "EM Tu\u{0301} Nhie\u{0302}n Qua\u{0309}ng Ninh nangcuc.mp4";
+
+    /**
+     * An R2/direct-MP4 video renders the `<video>`-shaped attributes
+     * (`data-source-type="r2_mp4"`, `data-embed-url` resolved to the
+     * real public R2 URL via `Tube_Core\Video\R2\R2MediaUrlNormalizer`,
+     * not an iframe embed URL) — the same surrounding click-to-load
+     * wrapper/button/view-url contract a Cloudflare Stream video gets,
+     * per this feature's own "extend the existing player architecture,
+     * don't build a second one" requirement.
+     */
+    public function test_embed_html_renders_r2_attributes_for_an_r2_video(): void
+    {
+        $r2_video_id = wp_insert_post(
+            [
+                'post_type'   => 'video',
+                'post_title'  => 'R2 Template Tags Test Video',
+                'post_status' => 'publish',
+            ],
+            true
+        );
+        self::assertIsInt($r2_video_id);
+
+        try {
+            Tube_Core_Plugin::instance()->video_metadata_repository()->create_r2(
+                $r2_video_id,
+                self::REAL_R2_OBJECT_KEY,
+                CfStreamStatus::Ready
+            );
+
+            $html = tube_player_get_embed_html($r2_video_id, ['title' => 'My R2 Video']);
+
+            $expected_url = Tube_Core_Plugin::instance()->r2_media_url_normalizer()->public_url(
+                self::REAL_R2_OBJECT_KEY
+            );
+
+            self::assertStringContainsString('data-tube-player', $html);
+            self::assertStringContainsString('data-source-type="r2_mp4"', $html);
+            self::assertStringContainsString('data-embed-url="' . esc_url($expected_url) . '"', $html);
+            self::assertStringContainsString('<button type="button"', $html);
+            self::assertStringContainsString('<noscript>', $html);
+        } finally {
+            global $wpdb;
+            /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API.
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- test cleanup against a dedicated custom table owned by tube-core.
+            $wpdb->delete($wpdb->prefix . 'tube_video_metadata', ['video_id' => $r2_video_id], ['%d']);
+            wp_delete_post($r2_video_id, true);
+        }
+    }
+
+    /**
+     * An R2 video with `Error` status (readiness validation failed)
+     * renders the same non-interactive status overlay a non-Ready
+     * Cloudflare Stream video gets — never the Stream-specific "Video
+     * đang được xử lý" (Pending/Processing) message, per this feature's
+     * own "source-specific readiness handled correctly" requirement.
+     */
+    public function test_embed_html_renders_status_block_for_an_unready_r2_video(): void
+    {
+        $r2_video_id = wp_insert_post(
+            [
+                'post_type'   => 'video',
+                'post_title'  => 'R2 Unready Test Video',
+                'post_status' => 'publish',
+            ],
+            true
+        );
+        self::assertIsInt($r2_video_id);
+
+        try {
+            Tube_Core_Plugin::instance()->video_metadata_repository()->create_r2(
+                $r2_video_id,
+                'videos/does-not-exist-' . uniqid('', true) . '.mp4',
+                CfStreamStatus::Error
+            );
+
+            $html = tube_player_get_embed_html($r2_video_id);
+
+            self::assertStringNotContainsString('data-tube-player', $html);
+            self::assertStringNotContainsString('data-embed-url', $html);
+            self::assertStringContainsString('Video hiện không khả dụng.', $html);
+        } finally {
+            global $wpdb;
+            /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API.
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- test cleanup against a dedicated custom table owned by tube-core.
+            $wpdb->delete($wpdb->prefix . 'tube_video_metadata', ['video_id' => $r2_video_id], ['%d']);
+            wp_delete_post($r2_video_id, true);
+        }
+    }
+
+    /**
+     * `tube_player_get_source_url()` resolves the correct real URL for
+     * both sources — the one shared resolution point SEO/sitemap use.
+     */
+    public function test_source_url_resolves_correctly_for_both_sources(): void
+    {
+        $expected_stream_url = Tube_Player_Plugin::instance()->video_provider()->embed_url($this->cf_stream_uid);
+        self::assertSame($expected_stream_url, tube_player_get_source_url($this->video_id));
+
+        $r2_video_id = wp_insert_post(
+            [
+                'post_type'   => 'video',
+                'post_title'  => 'R2 Source URL Test Video',
+                'post_status' => 'publish',
+            ],
+            true
+        );
+        self::assertIsInt($r2_video_id);
+
+        try {
+            Tube_Core_Plugin::instance()->video_metadata_repository()->create_r2(
+                $r2_video_id,
+                self::REAL_R2_OBJECT_KEY,
+                CfStreamStatus::Ready
+            );
+
+            $expected_r2_url = Tube_Core_Plugin::instance()->r2_media_url_normalizer()->public_url(
+                self::REAL_R2_OBJECT_KEY
+            );
+            self::assertSame($expected_r2_url, tube_player_get_source_url($r2_video_id));
+        } finally {
+            global $wpdb;
+            /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API.
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- test cleanup against a dedicated custom table owned by tube-core.
+            $wpdb->delete($wpdb->prefix . 'tube_video_metadata', ['video_id' => $r2_video_id], ['%d']);
+            wp_delete_post($r2_video_id, true);
+        }
+    }
+
+    /**
      * With a WordPress Media Library poster override set, the click-to-load
      * block's poster `<img>` uses that attachment (ADR-0001).
      */

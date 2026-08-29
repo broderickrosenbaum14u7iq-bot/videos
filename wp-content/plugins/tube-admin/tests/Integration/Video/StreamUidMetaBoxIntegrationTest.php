@@ -13,6 +13,7 @@ use PHPUnit\Framework\TestCase;
 use Tube_Admin\Video\StreamUidMetaBox;
 use Tube_Core\Plugin as Tube_Core_Plugin;
 use Tube_Core\Video\CfStreamStatus;
+use Tube_Core\Video\VideoSource;
 
 /**
  * Exercises `StreamUidMetaBox::save()` — the handler behind the
@@ -208,7 +209,112 @@ final class StreamUidMetaBoxIntegrationTest extends TestCase
     }
 
     /**
-     * Populate $_POST as the meta box's own form would, with a real, valid nonce.
+     * The real R2 object this project's own R2 support was built/tested
+     * against (a genuine Vietnamese filename with combining diacritics)
+     * — used read-only here, exactly as this feature's own testing
+     * instructions direct; never modified/deleted.
+     */
+    private const REAL_R2_URL = 'https://media.nangcuctvc.com/'
+        . 'EM%20Tu%CC%81%20Nhie%CC%82n%20Qua%CC%89ng%20Ninh%20nangcuc.mp4';
+
+    /**
+     * A real, reachable R2 URL submitted as the source resolves to
+     * `R2Mp4`, `Ready` (a live HEAD request against the real object
+     * succeeds), the admin-entered duration is stored, and no Cloudflare
+     * Stream UID is ever written — this feature's own "no stale
+     * Pending/Processing causing 'Video đang được xử lý'" requirement
+     * for this source made concrete.
+     *
+     * Requires `TUBE_CORE_R2_MEDIA_BASE_URL` to be configured to
+     * `https://media.nangcuctvc.com` in this environment (see
+     * `docker-compose.yml`) and real outbound internet access — there is
+     * no credential-gated "unconfigured" state to fall back to for R2
+     * readiness the way Stream's sync has (`R2VideoValidator` always
+     * makes a live HEAD request), so this test's own value depends on
+     * that real reachability genuinely being exercised.
+     */
+    public function test_save_r2_with_a_real_reachable_url_is_ready_with_duration(): void
+    {
+        $video_id = $this->create_video();
+        $this->submit_r2(self::REAL_R2_URL, 130);
+
+        StreamUidMetaBox::save($video_id);
+
+        $metadata = Tube_Core_Plugin::instance()->video_metadata_repository()->find($video_id);
+        self::assertNotNull($metadata);
+        self::assertSame(VideoSource::R2Mp4, $metadata->source);
+        self::assertNull($metadata->cf_stream_uid);
+        self::assertSame(CfStreamStatus::Ready, $metadata->cf_status);
+        self::assertSame(130, $metadata->duration_seconds);
+    }
+
+    /**
+     * A bare object key (no scheme/host) is accepted identically to a
+     * full URL — both normalize to the same canonical key.
+     */
+    public function test_save_r2_accepts_a_bare_object_key(): void
+    {
+        $video_id = $this->create_video();
+        $this->submit_r2(
+            'EM%20Tu%CC%81%20Nhie%CC%82n%20Qua%CC%89ng%20Ninh%20nangcuc.mp4',
+            null
+        );
+
+        StreamUidMetaBox::save($video_id);
+
+        $metadata = Tube_Core_Plugin::instance()->video_metadata_repository()->find($video_id);
+        self::assertNotNull($metadata);
+        self::assertSame(VideoSource::R2Mp4, $metadata->source);
+        self::assertSame(CfStreamStatus::Ready, $metadata->cf_status);
+        self::assertNull($metadata->duration_seconds);
+    }
+
+    /**
+     * A URL whose host doesn't match the configured R2 domain is
+     * rejected outright: no metadata row is created at all — the R2
+     * counterpart to the Stream duplicate-UID rejection, and the concrete
+     * proof of this feature's own SSRF-protection requirement.
+     */
+    public function test_save_r2_rejects_a_url_on_an_unconfigured_host(): void
+    {
+        $video_id = $this->create_video();
+        $this->submit_r2('https://evil.example.com/clip.mp4', null);
+
+        StreamUidMetaBox::save($video_id);
+
+        self::assertNull(Tube_Core_Plugin::instance()->video_metadata_repository()->find($video_id));
+    }
+
+    /**
+     * An object key already owned by a different video is rejected: the
+     * second video gets no metadata row, and the first video's key is
+     * untouched — the R2 counterpart to
+     * {@see self::test_save_rejects_a_uid_already_owned_by_a_different_video()}.
+     */
+    public function test_save_r2_rejects_a_key_already_owned_by_a_different_video(): void
+    {
+        $first_id  = $this->create_video();
+        $second_id = $this->create_video();
+        $shared    = 'videos/shared-' . uniqid('', true) . '.mp4';
+
+        Tube_Core_Plugin::instance()->video_metadata_repository()->create_r2(
+            $first_id,
+            $shared,
+            CfStreamStatus::Ready
+        );
+
+        $this->submit_r2($shared, null);
+        StreamUidMetaBox::save($second_id);
+
+        self::assertNull(Tube_Core_Plugin::instance()->video_metadata_repository()->find($second_id));
+        self::assertSame(
+            $first_id,
+            Tube_Core_Plugin::instance()->video_metadata_repository()->find_video_id_by_r2_object_key($shared)
+        );
+    }
+
+    /**
+     * Populate $_POST as the meta box's own Cloudflare Stream form field would, with a real, valid nonce.
      *
      * @param string $cf_stream_uid The Stream UID value to submit.
      */
@@ -217,7 +323,25 @@ final class StreamUidMetaBoxIntegrationTest extends TestCase
         // phpcs:ignore WordPress.Security.NonceVerification.Missing -- this *is* the code constructing the nonce the real form field would carry.
         $_POST = [
             'tube_admin_video_stream_uid_nonce' => wp_create_nonce('tube_admin_video_stream_uid'),
+            'tube_admin_video_source'           => 'cloudflare_stream',
             'tube_admin_cf_stream_uid'          => $cf_stream_uid,
+        ];
+    }
+
+    /**
+     * Populate $_POST as the meta box's own R2 form fields would, with a real, valid nonce.
+     *
+     * @param string   $r2_source The R2 URL/object key value to submit.
+     * @param int|null $duration  The admin-entered duration to submit, if any.
+     */
+    private function submit_r2(string $r2_source, ?int $duration): void
+    {
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- this *is* the code constructing the nonce the real form field would carry.
+        $_POST = [
+            'tube_admin_video_stream_uid_nonce' => wp_create_nonce('tube_admin_video_stream_uid'),
+            'tube_admin_video_source'           => 'r2_mp4',
+            'tube_admin_r2_source'              => $r2_source,
+            'tube_admin_r2_duration_seconds'    => null === $duration ? '' : (string) $duration,
         ];
     }
 

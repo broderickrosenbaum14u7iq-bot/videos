@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace Tube_Player\Render;
 
 use Tube_Core\Video\CfStreamStatus;
+use Tube_Core\Video\VideoSource;
 use Tube_Player\Video\ImageSize;
 use Tube_Player\Video\VideoProviderInterface;
 
@@ -80,15 +81,24 @@ final class PlayerHtmlRenderer
      * @param int                        $video_id The video post ID — embedded only as `data-view-url`
      *     (a pre-built, server-rendered REST URL), the same "no URL-construction logic in client-side JS"
      *     posture `data-embed-url` already established; never sent anywhere else by this class.
-     * @param string                     $cf_stream_uid Cloudflare Stream UID.
-     * @param CfStreamStatus             $status   The video's current Cloudflare Stream processing status —
-     *     stored/synchronized metadata (`StreamStatusUpdater`), never a live per-render Cloudflare API call.
+     * @param VideoSource                $source   Which backend this video's bytes come from.
+     * @param string|null                $cf_stream_uid Cloudflare Stream UID — required when `$source` is
+     *     `CloudflareStream`, ignored otherwise.
+     * @param string|null                $r2_playback_url The already-resolved, fully-qualified public R2 URL
+     *     (resolved by the caller via `Tube_Core\Video\R2\R2MediaUrlNormalizer` — this class never depends on
+     *     tube-core's R2 resolver directly, the same "pure rendering, URL resolution happens elsewhere" split
+     *     `$cf_stream_uid`/`$this->stream_provider` already establish for Stream) — required when `$source` is
+     *     `R2Mp4`, ignored otherwise.
+     * @param CfStreamStatus             $status   The video's current readiness status —
+     *     stored/synchronized metadata (`StreamStatusUpdater`), never a live per-render lookup.
      * @param int|null                   $override_poster_image_id WP attachment ID to use as the poster (ADR-0001).
      * @param array<string, bool|string> $args `title`/`aspect_ratio`/`class` (string), `eager` (bool). All optional.
      */
     public function render(
         int $video_id,
-        string $cf_stream_uid,
+        VideoSource $source,
+        ?string $cf_stream_uid,
+        ?string $r2_playback_url,
         CfStreamStatus $status,
         ?int $override_poster_image_id,
         array $args = []
@@ -97,7 +107,24 @@ final class PlayerHtmlRenderer
             return $this->render_status_overlay($this->status_message($status), $override_poster_image_id, $args);
         }
 
-        $embed_url    = $this->stream_provider->embed_url($cf_stream_uid);
+        $embed_url = match ($source) {
+            VideoSource::CloudflareStream => null === $cf_stream_uid
+                ? ''
+                : $this->stream_provider->embed_url($cf_stream_uid),
+            VideoSource::R2Mp4 => $r2_playback_url ?? '',
+        };
+
+        if ('' === $embed_url) {
+            // Ready but no resolvable URL is an inconsistent-data state
+            // (a Ready Stream video with no UID, or a Ready R2 video the
+            // caller failed to resolve a URL for) that should never
+            // happen by construction — both save paths only ever write
+            // Ready alongside the identifier that makes it resolvable —
+            // but rendering the same non-interactive overlay a genuine
+            // non-Ready status gets is a safe degrade, not a fatal.
+            return $this->render_status_overlay($this->status_message($status), $override_poster_image_id, $args);
+        }
+
         $view_url     = rest_url('tube/v1/videos/' . $video_id . '/view');
         $title        = self::string_arg($args, 'title', '');
         $eager        = self::bool_arg($args, 'eager', false);
@@ -115,8 +142,8 @@ final class PlayerHtmlRenderer
         );
 
         return sprintf(
-            '<div class="%1$s" style="aspect-ratio:%2$s" data-tube-player data-embed-url="%3$s"'
-                . ' data-view-url="%8$s" data-title="%7$s">'
+            '<div class="%1$s" style="aspect-ratio:%2$s" data-tube-player data-source-type="%9$s"'
+                . ' data-embed-url="%3$s" data-view-url="%8$s" data-title="%7$s">'
                 . '%4$s'
                 . '<button type="button" class="tube-player__play" aria-label="%5$s">'
                 . '<svg class="tube-player__play-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
@@ -131,7 +158,8 @@ final class PlayerHtmlRenderer
             esc_attr($this->play_label($title)),
             esc_html($this->watch_label($title)),
             esc_attr('' === $title ? __('Video player', 'tube-player') : $title),
-            esc_url($view_url)
+            esc_url($view_url),
+            esc_attr($source->value)
         );
     }
 

@@ -11,6 +11,7 @@ namespace Tube_Core\Video\Repositories;
 
 use Tube_Core\Video\CfStreamStatus;
 use Tube_Core\Video\VideoMetadata;
+use Tube_Core\Video\VideoSource;
 
 /**
  * Contract for wp_tube_video_metadata data access, per the
@@ -39,6 +40,20 @@ interface VideoMetadataRepositoryInterface
      * @param CfStreamStatus $status        The initial encoding status.
      */
     public function create(int $video_id, string $cf_stream_uid, CfStreamStatus $status): void;
+
+    /**
+     * Create the metadata row for a newly-created R2/direct-MP4 video —
+     * the R2 counterpart to {@see self::create()}. `$status` is always
+     * `Ready` or `Error` (never `Pending`/`Processing`, which describe a
+     * Cloudflare Stream encoding pipeline this source doesn't have),
+     * decided synchronously by the caller from a live reachability check
+     * against the resolved public URL before this is called.
+     *
+     * @param int            $video_id      The video post ID.
+     * @param string         $r2_object_key The canonical (decoded) R2 object key — never a playback URL.
+     * @param CfStreamStatus $status        `Ready` if the object was confirmed reachable/video-like, `Error` otherwise.
+     */
+    public function create_r2(int $video_id, string $r2_object_key, CfStreamStatus $status): void;
 
     /**
      * Fetch the full stored metadata for one video.
@@ -80,6 +95,17 @@ interface VideoMetadataRepositoryInterface
      * @return int|null The video post ID, or null if no metadata row references this UID.
      */
     public function find_video_id_by_stream_uid(string $cf_stream_uid): ?int;
+
+    /**
+     * Find the video an R2 object key belongs to — the R2 counterpart to
+     * {@see self::find_video_id_by_stream_uid()}, used the same way for
+     * duplicate-object detection before {@see self::create_r2()}/{@see self::update_r2_object_key()}.
+     *
+     * @param string $r2_object_key The R2 object key to look up.
+     *
+     * @return int|null The video post ID, or null if no metadata row references this object key.
+     */
+    public function find_video_id_by_r2_object_key(string $r2_object_key): ?int;
 
     /**
      * The current encoding status for a video.
@@ -139,6 +165,17 @@ interface VideoMetadataRepositoryInterface
      * @param string $cf_stream_uid The new Cloudflare Stream UID.
      */
     public function update_stream_uid(int $video_id, string $cf_stream_uid): void;
+
+    /**
+     * Update a video's R2 object key — the R2 counterpart to
+     * {@see self::update_stream_uid()}, same division of responsibility
+     * (caller validates uniqueness first via {@see self::find_video_id_by_r2_object_key()};
+     * the `r2_object_key_idx` UNIQUE KEY is the hard backstop).
+     *
+     * @param int    $video_id      The video post ID.
+     * @param string $r2_object_key The new R2 object key.
+     */
+    public function update_r2_object_key(int $video_id, string $r2_object_key): void;
 
     /**
      * Update a video's thumbnail source-frame offset (the second within

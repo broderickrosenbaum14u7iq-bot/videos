@@ -14,7 +14,6 @@ use Tube_Core\Plugin as Tube_Core_Plugin;
 use Tube_Core\Video\VideoMetadata;
 use Tube_Player\Plugin as Tube_Player_Plugin;
 use Tube_Player\Video\ImageSize;
-use Tube_Player\Video\VideoProviderInterface;
 
 /**
  * Orchestrates video XML sitemap generation: gathers every published
@@ -226,7 +225,6 @@ final class SitemapGenerator
         _prime_post_caches($video_ids, false, false);
 
         $metadata_by_id = Tube_Core_Plugin::instance()->video_metadata_repository()->find_many($video_ids);
-        $provider       = Tube_Player_Plugin::instance()->video_provider();
 
         $entries = [];
 
@@ -237,7 +235,7 @@ final class SitemapGenerator
                 continue;
             }
 
-            $entry = $this->build_entry($row, $metadata, $provider);
+            $entry = $this->build_entry($row, $metadata);
 
             if (null !== $entry) {
                 $entries[] = $entry;
@@ -254,16 +252,12 @@ final class SitemapGenerator
      * publishing an invalid/fabricated `thumbnail_loc`).
      *
      * @param array<string, int|string> $row      One published-video row.
-     * @param VideoMetadata             $metadata The video's Cloudflare Stream metadata.
-     * @param VideoProviderInterface    $provider Resolves the embed URL.
+     * @param VideoMetadata             $metadata The video's metadata (either source).
      *
      * @phpstan-param array{video_id: int, post_date_gmt: string, post_modified_gmt: string} $row
      */
-    private function build_entry(
-        array $row,
-        VideoMetadata $metadata,
-        VideoProviderInterface $provider
-    ): ?VideoSitemapEntry {
+    private function build_entry(array $row, VideoMetadata $metadata): ?VideoSitemapEntry
+    {
         $video_id = $row['video_id'];
 
         // resolve_urls() resolves metadata->og_image_id (a WordPress
@@ -306,7 +300,7 @@ final class SitemapGenerator
             $title,
             $description,
             $image_url,
-            $provider->embed_url($metadata->cf_stream_uid),
+            tube_player_get_source_url($video_id),
             self::to_w3c_datetime($row['post_date_gmt']),
             $metadata->duration_seconds
         );

@@ -11,6 +11,7 @@ namespace Tube_Core\CLI;
 
 use Tube_Core\Stream\StreamMetadataSyncer;
 use Tube_Core\Video\Repositories\VideoMetadataRepositoryInterface;
+use Tube_Core\Video\VideoSource;
 use WP_CLI;
 
 /**
@@ -109,6 +110,12 @@ final class StreamCommand
 
         if (null === $metadata) {
             WP_CLI::error("No Cloudflare Stream metadata found for video ID {$video_id}.");
+
+            return;
+        }
+
+        if (VideoSource::CloudflareStream !== $metadata->source || null === $metadata->cf_stream_uid) {
+            WP_CLI::error("Video ID {$video_id} is not a Cloudflare Stream video — nothing to resync.");
 
             return;
         }

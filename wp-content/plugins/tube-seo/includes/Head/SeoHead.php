@@ -306,7 +306,6 @@ final class SeoHead
         $embed_url = '';
 
         if (null !== $metadata) {
-            $provider = Tube_Player_Plugin::instance()->video_provider();
             // resolve_urls() resolves metadata->og_image_id (a WordPress
             // attachment ID, ADR-0001), falling back to
             // metadata->poster_image_id when no OG-image override has
@@ -326,7 +325,12 @@ final class SeoHead
                 $metadata->og_image_id ?? $metadata->poster_image_id ?? self::native_featured_image_id($video_id),
                 ImageSize::OgImage
             )['src'];
-            $embed_url = $provider->embed_url($metadata->cf_stream_uid);
+            // tube_player_get_source_url() resolves either source
+            // (Cloudflare Stream click-to-load embed URL, or a direct R2
+            // MP4 URL) — the one shared resolution point every
+            // source-independent consumer of "the real playback URL"
+            // uses, per that function's own docblock.
+            $embed_url = tube_player_get_source_url($video_id);
         }
 
         $meta = PageMetaBuilder::for_video($site_name, $title, $description, $canonical, $image_url);

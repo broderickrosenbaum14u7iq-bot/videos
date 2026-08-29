@@ -40,6 +40,14 @@ x-wordpress-env: &wordpress-env
   # leave this sync path unconfigured (fails closed, existing data never
   # corrupted — see StreamMetadataSyncer's own docblock).
   #
+  # TUBE_CORE_R2_MEDIA_BASE_URL (added alongside R2/direct-MP4 support as
+  # a second video source): the one trusted R2 custom domain
+  # Tube_Core\Video\R2\R2MediaUrlNormalizer resolves object keys against
+  # and validates admin-submitted URLs/keys against (the SSRF
+  # protection — an R2 URL whose host doesn't match this exactly is
+  # rejected). No R2 API credentials needed: playback only ever uses
+  # this public custom domain, never the R2 S3 API.
+  #
   # TUBE_PLAYER_* (Phase 6): Tube_Player\Plugin reads these to build
   # Cloudflare Stream/Images URLs at render time — never a stored
   # playback URL (ARCHITECTURE.md §2.1). Signed URLs are opt-in: leaving
@@ -74,6 +82,7 @@ x-wordpress-env: &wordpress-env
     define( 'TUBE_CORE_CLOUDFLARE_STREAM_WEBHOOK_SECRET', '${CLOUDFLARE_STREAM_WEBHOOK_SECRET:-}' );
     define( 'TUBE_CORE_CLOUDFLARE_STREAM_ACCOUNT_ID', '${CLOUDFLARE_STREAM_ACCOUNT_ID:-}' );
     define( 'TUBE_CORE_CLOUDFLARE_STREAM_API_TOKEN', '${CLOUDFLARE_STREAM_API_TOKEN:-}' );
+    define( 'TUBE_CORE_R2_MEDIA_BASE_URL', '${CLOUDFLARE_R2_MEDIA_BASE_URL:-}' );
     define( 'TUBE_PLAYER_CLOUDFLARE_STREAM_CUSTOMER_CODE', '${CLOUDFLARE_STREAM_CUSTOMER_CODE:-}' );
     define( 'TUBE_PLAYER_CLOUDFLARE_STREAM_SIGNING_KEY_ID', '${CLOUDFLARE_STREAM_SIGNING_KEY_ID:-}' );
     define( 'TUBE_PLAYER_CLOUDFLARE_STREAM_SIGNING_KEY_PEM_BASE64', '${CLOUDFLARE_STREAM_SIGNING_KEY_PEM_BASE64:-}' );

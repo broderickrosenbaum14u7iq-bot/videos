@@ -137,4 +137,27 @@ abstract class AbstractMigration implements MigrationInterface
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table/column identifiers only, derived from $wpdb->prefix and this migration's own literal column names, never user input; identifiers cannot be bound via wpdb::prepare().
         $this->db()->query("ALTER TABLE {$table_name} DROP COLUMN {$column_name}");
     }
+
+    /**
+     * Change an existing column's definition in place (type, nullability,
+     * default) without renaming it.
+     *
+     * Used from up()/down() methods that need to widen/narrow an existing
+     * column's constraints (e.g. relaxing a column from `NOT NULL` to
+     * nullable to support a second, optional data path — see
+     * `Migration014AddVideoSourceAndR2Fields`). Like rename_column()/
+     * drop_column(), dbDelta() has no equivalent — it only ever adds
+     * what's missing when diffing a CREATE TABLE statement, it never
+     * alters an existing column's own definition, so this is a direct
+     * query by necessity.
+     *
+     * @param string $table_name            Full table name, including the site's table prefix.
+     * @param string $column_definition_sql The column's full new definition, e.g. `"x VARCHAR(64) NULL"`.
+     */
+    protected function modify_column(string $table_name, string $column_definition_sql): void
+    {
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.SchemaChange -- schema change; no dbDelta/WP_Query equivalent exists for altering a column's definition. See ARCHITECTURE.md §2.5, §3, §11.
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table identifier and column definition are this migration's own literal strings, never user input; a column definition cannot be bound via wpdb::prepare() either way.
+        $this->db()->query("ALTER TABLE {$table_name} MODIFY COLUMN {$column_definition_sql}");
+    }
 }

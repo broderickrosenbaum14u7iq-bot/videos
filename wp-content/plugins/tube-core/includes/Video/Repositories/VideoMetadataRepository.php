@@ -12,6 +12,7 @@ namespace Tube_Core\Video\Repositories;
 use RuntimeException;
 use Tube_Core\Video\CfStreamStatus;
 use Tube_Core\Video\VideoMetadata;
+use Tube_Core\Video\VideoSource;
 
 /**
  * Data access for wp_tube_video_metadata (VideoMetadataRepositoryInterface).
@@ -85,12 +86,44 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
             $wpdb->prefix . 'tube_video_metadata',
             [
                 'video_id'      => $video_id,
+                'source'        => VideoSource::CloudflareStream->value,
                 'cf_stream_uid' => $cf_stream_uid,
                 'cf_status'     => $status->value,
                 'created_at'    => $now,
                 'updated_at'    => $now,
             ],
-            ['%d', '%s', '%s', '%s', '%s']
+            ['%d', '%s', '%s', '%s', '%s', '%s']
+        );
+
+        unset($this->cache[ $video_id ]);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int            $video_id      The video post ID.
+     * @param string         $r2_object_key The canonical R2 object key.
+     * @param CfStreamStatus $status        `Ready` or `Error` — never `Pending`/`Processing` (see interface docblock).
+     */
+    public function create_r2(int $video_id, string $r2_object_key, CfStreamStatus $status): void
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        $now = current_time('mysql', true);
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
+        $wpdb->insert(
+            $wpdb->prefix . 'tube_video_metadata',
+            [
+                'video_id'      => $video_id,
+                'source'        => VideoSource::R2Mp4->value,
+                'r2_object_key' => $r2_object_key,
+                'cf_status'     => $status->value,
+                'created_at'    => $now,
+                'updated_at'    => $now,
+            ],
+            ['%d', '%s', '%s', '%s', '%s', '%s']
         );
 
         unset($this->cache[ $video_id ]);
@@ -113,8 +146,8 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
         $row = $wpdb->get_row(
             $wpdb->prepare(
-                'SELECT video_id, cf_stream_uid, cf_status, duration_seconds, thumbnail_time_seconds,'
-                . ' poster_image_id, og_image_id FROM %i WHERE video_id = %d',
+                'SELECT video_id, source, cf_stream_uid, r2_object_key, cf_status, duration_seconds,'
+                . ' thumbnail_time_seconds, poster_image_id, og_image_id FROM %i WHERE video_id = %d',
                 $wpdb->prefix . 'tube_video_metadata',
                 $video_id
             ),
@@ -127,7 +160,7 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
             return null;
         }
 
-        /** @var array{video_id: string, cf_stream_uid: string, cf_status: string, duration_seconds: string|null, thumbnail_time_seconds: string, poster_image_id: string|null, og_image_id: string|null} $row */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+        /** @var array{video_id: string, source: string, cf_stream_uid: string|null, r2_object_key: string|null, cf_status: string, duration_seconds: string|null, thumbnail_time_seconds: string, poster_image_id: string|null, og_image_id: string|null} $row */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
 
         $metadata                 = self::hydrate($row);
         $this->cache[ $video_id ] = $metadata;
@@ -164,9 +197,10 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
             $placeholders = implode(', ', array_fill(0, count($uncached_ids), '%d'));
 
             $sql = $wpdb->prepare(
-                'SELECT video_id, cf_stream_uid, cf_status, duration_seconds, thumbnail_time_seconds,'
+                'SELECT video_id, source, cf_stream_uid, r2_object_key, cf_status, duration_seconds,'
+                    . ' thumbnail_time_seconds, poster_image_id, og_image_id'
                     // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared -- $placeholders is a fixed-shape string of literal "%d" tokens (one per element of $uncached_ids), never external input, and every actual value is still a %i/%d-bound argument below.
-                    . " poster_image_id, og_image_id FROM %i WHERE video_id IN ({$placeholders})",
+                    . " FROM %i WHERE video_id IN ({$placeholders})",
                 array_merge([$wpdb->prefix . 'tube_video_metadata'], $uncached_ids)
             );
 
@@ -179,7 +213,7 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- dedicated custom table (§2.5, §11); $sql *is* $wpdb->prepare()'d above.
             $rows = $wpdb->get_results($sql, ARRAY_A);
 
-            /** @var array<int, array{video_id: string, cf_stream_uid: string, cf_status: string, duration_seconds: string|null, thumbnail_time_seconds: string, poster_image_id: string|null, og_image_id: string|null}> $rows */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+            /** @var array<int, array{video_id: string, source: string, cf_stream_uid: string|null, r2_object_key: string|null, cf_status: string, duration_seconds: string|null, thumbnail_time_seconds: string, poster_image_id: string|null, og_image_id: string|null}> $rows */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
             $rows = (array) $rows;
 
             $found_ids = [];
@@ -220,7 +254,9 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
      *
      * @phpstan-param array{
      *     video_id: string,
-     *     cf_stream_uid: string,
+     *     source: string,
+     *     cf_stream_uid: string|null,
+     *     r2_object_key: string|null,
      *     cf_status: string,
      *     duration_seconds: string|null,
      *     thumbnail_time_seconds: string,
@@ -232,7 +268,9 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
     {
         return new VideoMetadata(
             (int) $row['video_id'],
+            VideoSource::from($row['source']),
             $row['cf_stream_uid'],
+            $row['r2_object_key'],
             CfStreamStatus::from($row['cf_status']),
             null === $row['duration_seconds'] ? null : (int) $row['duration_seconds'],
             (int) $row['thumbnail_time_seconds'],
@@ -257,6 +295,28 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
                 'SELECT video_id FROM %i WHERE cf_stream_uid = %s',
                 $wpdb->prefix . 'tube_video_metadata',
                 $cf_stream_uid
+            )
+        );
+
+        return null === $video_id ? null : (int) $video_id;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param string $r2_object_key The R2 object key to look up.
+     */
+    public function find_video_id_by_r2_object_key(string $r2_object_key): ?int
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
+        $video_id = $wpdb->get_var(
+            $wpdb->prepare(
+                'SELECT video_id FROM %i WHERE r2_object_key = %s',
+                $wpdb->prefix . 'tube_video_metadata',
+                $r2_object_key
             )
         );
 
@@ -339,6 +399,32 @@ final class VideoMetadataRepository implements VideoMetadataRepositoryInterface
             ],
             ['video_id' => $video_id],
             ['%d', '%d', '%s'],
+            ['%d']
+        );
+
+        unset($this->cache[ $video_id ]);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int    $video_id      The video post ID.
+     * @param string $r2_object_key The new R2 object key.
+     */
+    public function update_r2_object_key(int $video_id, string $r2_object_key): void
+    {
+        global $wpdb;
+        /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- dedicated custom table, no WP_Query equivalent. See ARCHITECTURE.md §2.5, §11.
+        $wpdb->update(
+            $wpdb->prefix . 'tube_video_metadata',
+            [
+                'r2_object_key' => $r2_object_key,
+                'updated_at'    => current_time('mysql', true),
+            ],
+            ['video_id' => $video_id],
+            ['%s', '%s'],
             ['%d']
         );
 

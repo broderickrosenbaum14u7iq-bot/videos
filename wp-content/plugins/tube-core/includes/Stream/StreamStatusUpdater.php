@@ -76,6 +76,23 @@ final class StreamStatusUpdater
             throw new InvalidArgumentException("No video found for Cloudflare Stream UID \"{$cf_stream_uid}\".");
         }
 
+        $this->handle_for_video($video_id, $status, $duration_seconds);
+    }
+
+    /**
+     * Apply a validated status update, already resolved to a video ID —
+     * the source-agnostic core of {@see self::handle()}, also called
+     * directly by the R2/direct-MP4 save path
+     * (`Tube_Admin\Video\StreamUidMetaBox::save_r2()`), which already
+     * knows its video ID (it just wrote the row itself) and has no
+     * UID to resolve from in the first place.
+     *
+     * @param int            $video_id         The video whose status/duration to update.
+     * @param CfStreamStatus $status           The new status.
+     * @param int|null       $duration_seconds The new duration, if known.
+     */
+    public function handle_for_video(int $video_id, CfStreamStatus $status, ?int $duration_seconds): void
+    {
         $current = $this->metadata_repository->find($video_id);
 
         // find_video_id_by_stream_uid() just found this exact video_id by

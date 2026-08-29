@@ -12,6 +12,7 @@ namespace Tube_Core\Tests\Unit\Video\Fixtures;
 use Tube_Core\Video\CfStreamStatus;
 use Tube_Core\Video\Repositories\VideoMetadataRepositoryInterface;
 use Tube_Core\Video\VideoMetadata;
+use Tube_Core\Video\VideoSource;
 
 /**
  * An in-memory VideoMetadataRepositoryInterface — no database. Stateful
@@ -53,6 +54,28 @@ final class InMemoryVideoMetadataRepository implements VideoMetadataRepositoryIn
      * @var list<array{video_id: int, cf_stream_uid: string, status: CfStreamStatus}>
      */
     public array $create_calls = [];
+
+    /**
+     * Every create_r2() call this fake received, in order.
+     *
+     * @var list<array{video_id: int, r2_object_key: string, status: CfStreamStatus}>
+     */
+    public array $create_r2_calls = [];
+
+    /**
+     * Source, keyed by video ID. A key's absence means "still the default",
+     * i.e. CloudflareStream — see self::source_for().
+     *
+     * @var array<int, VideoSource>
+     */
+    private array $source_by_video_id = [];
+
+    /**
+     * R2 video ID, keyed by object key.
+     *
+     * @var array<string, int>
+     */
+    private array $video_id_by_r2_key = [];
 
     /**
      * Every update_status() call this fake received, in order.
@@ -111,8 +134,30 @@ final class InMemoryVideoMetadataRepository implements VideoMetadataRepositoryIn
         ];
 
         $this->video_id_by_uid[ $cf_stream_uid ] = $video_id;
+        $this->source_by_video_id[ $video_id ]   = VideoSource::CloudflareStream;
         $this->status_by_video_id[ $video_id ]   = $status;
         $this->duration_by_video_id[ $video_id ] = null;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int            $video_id      The video post ID.
+     * @param string         $r2_object_key The canonical R2 object key.
+     * @param CfStreamStatus $status        `Ready` or `Error`.
+     */
+    public function create_r2(int $video_id, string $r2_object_key, CfStreamStatus $status): void
+    {
+        $this->create_r2_calls[] = [
+            'video_id'      => $video_id,
+            'r2_object_key' => $r2_object_key,
+            'status'        => $status,
+        ];
+
+        $this->video_id_by_r2_key[ $r2_object_key ] = $video_id;
+        $this->source_by_video_id[ $video_id ]      = VideoSource::R2Mp4;
+        $this->status_by_video_id[ $video_id ]      = $status;
+        $this->duration_by_video_id[ $video_id ]    = null;
     }
 
     /**
@@ -137,7 +182,9 @@ final class InMemoryVideoMetadataRepository implements VideoMetadataRepositoryIn
             return null;
         }
 
+        $source        = $this->source_by_video_id[ $video_id ] ?? VideoSource::CloudflareStream;
         $cf_stream_uid = array_search($video_id, $this->video_id_by_uid, true);
+        $r2_object_key = array_search($video_id, $this->video_id_by_r2_key, true);
         $images        = $this->images_by_video_id[ $video_id ] ?? [
             'poster_image_id' => null,
             'og_image_id'     => null,
@@ -145,7 +192,9 @@ final class InMemoryVideoMetadataRepository implements VideoMetadataRepositoryIn
 
         return new VideoMetadata(
             $video_id,
-            is_string($cf_stream_uid) ? $cf_stream_uid : '',
+            $source,
+            is_string($cf_stream_uid) ? $cf_stream_uid : null,
+            is_string($r2_object_key) ? $r2_object_key : null,
             $status,
             $this->duration_by_video_id[ $video_id ] ?? null,
             $this->thumbnail_time_by_video_id[ $video_id ] ?? 0,
@@ -186,6 +235,16 @@ final class InMemoryVideoMetadataRepository implements VideoMetadataRepositoryIn
     public function find_video_id_by_stream_uid(string $cf_stream_uid): ?int
     {
         return $this->video_id_by_uid[ $cf_stream_uid ] ?? null;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param string $r2_object_key The R2 object key to look up.
+     */
+    public function find_video_id_by_r2_object_key(string $r2_object_key): ?int
+    {
+        return $this->video_id_by_r2_key[ $r2_object_key ] ?? null;
     }
 
     /**
@@ -268,6 +327,23 @@ final class InMemoryVideoMetadataRepository implements VideoMetadataRepositoryIn
         }
 
         $this->video_id_by_uid[ $cf_stream_uid ] = $video_id;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param int    $video_id      The video post ID.
+     * @param string $r2_object_key The new R2 object key.
+     */
+    public function update_r2_object_key(int $video_id, string $r2_object_key): void
+    {
+        $previous_key = array_search($video_id, $this->video_id_by_r2_key, true);
+
+        if (is_string($previous_key)) {
+            unset($this->video_id_by_r2_key[ $previous_key ]);
+        }
+
+        $this->video_id_by_r2_key[ $r2_object_key ] = $video_id;
     }
 
     /**
