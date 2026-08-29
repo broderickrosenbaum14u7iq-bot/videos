@@ -36,3 +36,6 @@ wp-content/themes/index.php
 # PHPUnit cache
 .phpunit.cache/
 .phpunit.result.cache
+
+# Wrangler (Cloudflare Worker CLI) local cache/auth, wherever it's run from
+.wrangler/
