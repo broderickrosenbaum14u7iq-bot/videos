@@ -164,7 +164,7 @@ final class StreamUidMetaBox
                     name="<?php echo esc_attr(self::SOURCE_FIELD_NAME); ?>"
                     value="<?php echo esc_attr(VideoSource::CloudflareStream->value); ?>"
                     data-tube-admin-video-source-choice
-                    <?php checked(VideoSource::CloudflareStream, $source); ?>
+                    <?php checked(VideoSource::CloudflareStream->value, $source->value); ?>
                 />
                 <?php esc_html_e('Cloudflare Stream', 'tube-admin'); ?>
             </label>
@@ -175,7 +175,7 @@ final class StreamUidMetaBox
                     name="<?php echo esc_attr(self::SOURCE_FIELD_NAME); ?>"
                     value="<?php echo esc_attr(VideoSource::R2Mp4->value); ?>"
                     data-tube-admin-video-source-choice
-                    <?php checked(VideoSource::R2Mp4, $source); ?>
+                    <?php checked(VideoSource::R2Mp4->value, $source->value); ?>
                 />
                 <?php esc_html_e('Cloudflare R2 / MP4', 'tube-admin'); ?>
             </label>

@@ -314,6 +314,96 @@ final class StreamUidMetaBoxIntegrationTest extends TestCase
     }
 
     /**
+     * Regression test for a real PHP fatal found live via manual browser
+     * testing (2026-08-29): `StreamUidMetaBox::render()` passed the
+     * `VideoSource` enum *cases themselves* to WordPress core's
+     * `checked()`, which casts both arguments to `string` internally
+     * (`checked_selected_helper()`) — a native PHP backed enum has no
+     * `__toString()`, so this fataled with "Object of class
+     * Tube_Core\Video\VideoSource could not be converted to string" on
+     * every single load of `wp-admin`'s real `Videos → Add New` screen
+     * (`add_meta_boxes_video` → this method), turning the entire
+     * metabox into a WordPress "There has been a critical error on this
+     * website" page. Every `save()`-focused test above exercises
+     * `StreamUidMetaBox::save()` only — this is the first test in this
+     * file that calls `render()` at all, which is exactly why automated
+     * tests never caught a fatal in a method automated tests never ran.
+     * A brand-new video with no metadata row yet (the real "Add New
+     * Video" scenario that fataled — `$source` defaults to
+     * `VideoSource::CloudflareStream` via `??` when `$metadata` is
+     * null) is the case that actually exercises both `checked()` calls.
+     */
+    public function test_render_does_not_fatal_for_a_brand_new_video_with_no_metadata(): void
+    {
+        $video_id = $this->create_video();
+        $post     = get_post($video_id);
+
+        self::assertNotNull($post);
+
+        ob_start();
+        StreamUidMetaBox::render($post);
+        $html = ob_get_clean();
+
+        self::assertIsString($html);
+        self::assertStringContainsString('value="cloudflare_stream"', $html);
+        self::assertStringContainsString('value="r2_mp4"', $html);
+        self::assertStringContainsString('tube_admin_cf_stream_uid', $html);
+        self::assertStringContainsString('tube_admin_r2_source', $html);
+    }
+
+    /**
+     * `render()` for a video that already has a saved Stream UID shows
+     * the Cloudflare Stream radio checked and the UID pre-filled — the
+     * real "Edit Video" scenario for an existing Stream video.
+     */
+    public function test_render_shows_the_saved_stream_uid_for_an_existing_stream_video(): void
+    {
+        $video_id = $this->create_video();
+        $uid      = 'render-test-uid-' . uniqid('', true);
+
+        $this->submit($uid);
+        StreamUidMetaBox::save($video_id);
+
+        $post = get_post($video_id);
+        self::assertNotNull($post);
+
+        ob_start();
+        StreamUidMetaBox::render($post);
+        $html = ob_get_clean();
+
+        self::assertIsString($html);
+        self::assertStringContainsString('name="tube_admin_cf_stream_uid"', $html);
+        self::assertStringContainsString('value="' . $uid . '"', $html);
+    }
+
+    /**
+     * `render()` for a video that already has a saved R2 object key
+     * shows the R2 radio checked and the key pre-filled — the real
+     * "Edit Video" scenario for an existing R2 video.
+     */
+    public function test_render_shows_the_saved_r2_key_for_an_existing_r2_video(): void
+    {
+        $video_id   = $this->create_video();
+        $object_key = 'videos/render-test-' . uniqid('', true) . '.mp4';
+
+        Tube_Core_Plugin::instance()->video_metadata_repository()->create_r2(
+            $video_id,
+            $object_key,
+            CfStreamStatus::Ready
+        );
+
+        $post = get_post($video_id);
+        self::assertNotNull($post);
+
+        ob_start();
+        StreamUidMetaBox::render($post);
+        $html = ob_get_clean();
+
+        self::assertIsString($html);
+        self::assertStringContainsString($object_key, $html);
+    }
+
+    /**
      * Populate $_POST as the meta box's own Cloudflare Stream form field would, with a real, valid nonce.
      *
      * @param string $cf_stream_uid The Stream UID value to submit.
