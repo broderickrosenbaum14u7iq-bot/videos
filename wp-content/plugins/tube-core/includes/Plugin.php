@@ -65,6 +65,7 @@ use Tube_Core\Stream\WebhookController;
 use Tube_Core\Stream\WebhookSignatureVerifier;
 use Tube_Core\Support\RedisRateLimiter;
 use Tube_Core\Video\R2\R2MediaUrlNormalizer;
+use Tube_Core\Video\R2\R2PlaybackUrlSigner;
 use Tube_Core\Video\R2\R2VideoValidator;
 use Tube_Core\Video\Repositories\VideoMetadataRepository;
 use Tube_Core\Video\Repositories\VideoMetadataRepositoryInterface;
@@ -175,6 +176,13 @@ final class Plugin
      * @var R2VideoValidator|null
      */
     private ?R2VideoValidator $r2_video_validator = null;
+
+    /**
+     * Lazily created by self::r2_playback_url_signer().
+     *
+     * @var R2PlaybackUrlSigner|null
+     */
+    private ?R2PlaybackUrlSigner $r2_playback_url_signer = null;
 
     /**
      * Lazily created by self::video_statistics_repository().
@@ -574,6 +582,27 @@ final class Plugin
         }
 
         return $this->r2_video_validator;
+    }
+
+    /**
+     * Signs short-lived R2 playback URLs (`TUBE_CORE_R2_SIGNING_SECRET`)
+     * — the only R2 URL this project's browser-facing code
+     * (`tube_player_get_embed_html()`) or server-side reachability check
+     * (`Tube_Admin\Video\StreamUidMetaBox::save_r2()`) is allowed to hand
+     * out, once the R2 bucket is private behind the Cloudflare Worker in
+     * `infrastructure/cloudflare/r2-media-worker/`.
+     */
+    public function r2_playback_url_signer(): R2PlaybackUrlSigner
+    {
+        if (null === $this->r2_playback_url_signer) {
+            $secret = defined('TUBE_CORE_R2_SIGNING_SECRET') && is_string(TUBE_CORE_R2_SIGNING_SECRET)
+                ? TUBE_CORE_R2_SIGNING_SECRET
+                : '';
+
+            $this->r2_playback_url_signer = new R2PlaybackUrlSigner($this->r2_media_url_normalizer(), $secret);
+        }
+
+        return $this->r2_playback_url_signer;
     }
 
     /**

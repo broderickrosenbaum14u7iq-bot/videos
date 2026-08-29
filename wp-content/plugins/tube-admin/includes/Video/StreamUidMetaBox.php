@@ -682,8 +682,15 @@ final class StreamUidMetaBox
         // change on this save — re-saving is also how an admin retries a
         // video that was transiently unreachable the first time (the
         // meta box's own "Readiness: unreachable/invalid — re-save to
-        // retry" message points back at exactly this).
-        $is_reachable = $tube_core->r2_video_validator()->is_reachable_video($normalizer->public_url($object_key));
+        // retry" message points back at exactly this). Signed, not the
+        // bare permanent URL: once the R2 bucket is private behind the
+        // Cloudflare Worker, only a freshly-signed URL is fetchable at
+        // all — this HEAD request is itself real proof the whole
+        // signing/Worker path works end-to-end, not just that the object
+        // exists.
+        $is_reachable = $tube_core->r2_video_validator()->is_reachable_video(
+            $tube_core->r2_playback_url_signer()->sign_url($object_key)
+        );
 
         $tube_core->status_updater()->handle_for_video(
             $post_id,

@@ -97,6 +97,36 @@ final class SeoHeadIntegrationTest extends TestCase
     }
 
     /**
+     * On a real R2/direct-MP4 video's single page, the VideoObject
+     * JSON-LD's `embedUrl` is the video's own watch-page permalink —
+     * never the permanent R2 media URL (`media.nangcuctvc.com`), which
+     * must not be exposed through SEO output now that the R2 bucket is
+     * private behind a Cloudflare Worker and only reachable through a
+     * short-lived signed URL.
+     */
+    public function test_r2_video_page_json_ld_does_not_expose_the_permanent_media_url(): void
+    {
+        $video_id = $this->create_published_video('Seo Head R2 Integration Test Video');
+
+        Tube_Core_Plugin::instance()->video_metadata_repository()->create_r2(
+            $video_id,
+            'seo-head-r2-test-video.mp4',
+            CfStreamStatus::Ready
+        );
+
+        $this->simulate_singular_video($video_id);
+
+        $output = $this->capture_head();
+
+        self::assertStringContainsString('"@type":"VideoObject"', $output);
+        self::assertStringNotContainsString('media.nangcuctvc.com', $output);
+        // wp_json_encode() escapes '/' to '\/' by default -- match the
+        // permalink as it actually appears inside the JSON-LD block.
+        $expected_embed_url = str_replace('/', '\\/', (string) get_permalink($video_id));
+        self::assertStringContainsString('"embedUrl":"' . $expected_embed_url . '"', $output);
+    }
+
+    /**
      * ADR-0001: when a video has a WordPress Media Library OG-image
      * override set, tube_seo_head() uses that attachment's URL for
      * og:image/JSON-LD thumbnailUrl instead of the Cloudflare Stream

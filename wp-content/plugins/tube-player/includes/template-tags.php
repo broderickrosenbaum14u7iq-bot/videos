@@ -141,7 +141,7 @@ function tube_player_get_embed_html(int $video_id, array $args = []): string
     );
 
     $r2_playback_url = VideoSource::R2Mp4 === $metadata->source && null !== $metadata->r2_object_key
-        ? Tube_Core_Plugin::instance()->r2_media_url_normalizer()->public_url($metadata->r2_object_key)
+        ? Tube_Core_Plugin::instance()->r2_playback_url_signer()->sign_url($metadata->r2_object_key)
         : null;
 
     return \Tube_Player\Plugin::instance()->player_renderer()->render(
@@ -156,15 +156,24 @@ function tube_player_get_embed_html(int $video_id, array $args = []): string
 }
 
 /**
- * The real, fetchable playback URL for one video, regardless of source —
- * a Cloudflare Stream click-to-load iframe embed URL, or a direct R2 MP4
- * URL. Never constructed/guessed by a caller; always resolved through
- * this one function so SEO (`Tube_Seo\Head\SeoHead`) and the sitemap
- * (`Tube_Seo\Sitemap\SitemapGenerator`) — which both need "the URL a
- * visitor's player would actually load," not the click-to-load wrapper
- * markup `tube_player_get_embed_html()` renders — share the exact same
- * source-resolution logic `tube_player_get_embed_html()` itself uses,
- * rather than each re-implementing the `VideoSource` branch.
+ * The URL SEO (`Tube_Seo\Head\SeoHead`'s JSON-LD `embedUrl`) and the
+ * sitemap (`Tube_Seo\Sitemap\SitemapGenerator`'s `<video:player_loc>`)
+ * should reference for one video, regardless of source.
+ *
+ * For Cloudflare Stream this is the real click-to-load iframe embed URL
+ * — a stable, long-lived, publicly fetchable URL, safe for persistent/
+ * cached structured data.
+ *
+ * For R2/direct-MP4 this is deliberately the video's own watch-page
+ * permalink, NOT the underlying media file — since the R2 bucket is
+ * private behind a Cloudflare Worker
+ * (`infrastructure/cloudflare/r2-media-worker/`), the only fetchable MP4
+ * URL is a signed one that expires in
+ * `Tube_Core\Video\R2\R2PlaybackUrlSigner::DEFAULT_TTL_SECONDS`, and
+ * schema.org's `embedUrl`/Google's `player_loc` both permit "a page that
+ * embeds the content," not only the raw media file — putting a
+ * 10-minute-lived signed URL into persistent/cached structured data
+ * would go stale almost immediately and isn't required by either spec.
  *
  * @param int $video_id The video post ID.
  *
@@ -184,7 +193,7 @@ function tube_player_get_source_url(int $video_id): string
             : \Tube_Player\Plugin::instance()->video_provider()->embed_url($metadata->cf_stream_uid),
         VideoSource::R2Mp4 => null === $metadata->r2_object_key
             ? ''
-            : Tube_Core_Plugin::instance()->r2_media_url_normalizer()->public_url($metadata->r2_object_key),
+            : (string) get_permalink($video_id),
     };
 }
 

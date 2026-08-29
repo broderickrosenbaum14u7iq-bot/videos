@@ -303,12 +303,16 @@ final class TemplateTagsIntegrationTest extends TestCase
 
     /**
      * An R2/direct-MP4 video renders the `<video>`-shaped attributes
-     * (`data-source-type="r2_mp4"`, `data-embed-url` resolved to the
-     * real public R2 URL via `Tube_Core\Video\R2\R2MediaUrlNormalizer`,
-     * not an iframe embed URL) — the same surrounding click-to-load
-     * wrapper/button/view-url contract a Cloudflare Stream video gets,
-     * per this feature's own "extend the existing player architecture,
-     * don't build a second one" requirement.
+     * (`data-source-type="r2_mp4"`, `data-embed-url` resolved to a
+     * temporary, HMAC-signed playback URL via
+     * `Tube_Core\Video\R2\R2PlaybackUrlSigner` — never the bare
+     * permanent public R2 URL, which is no longer safe to expose once
+     * the R2 bucket is private behind the Cloudflare Worker in
+     * `infrastructure/cloudflare/r2-media-worker/`) — the same
+     * surrounding click-to-load wrapper/button/view-url contract a
+     * Cloudflare Stream video gets, per this feature's own "extend the
+     * existing player architecture, don't build a second one"
+     * requirement.
      */
     public function test_embed_html_renders_r2_attributes_for_an_r2_video(): void
     {
@@ -331,13 +335,22 @@ final class TemplateTagsIntegrationTest extends TestCase
 
             $html = tube_player_get_embed_html($r2_video_id, ['title' => 'My R2 Video']);
 
-            $expected_url = Tube_Core_Plugin::instance()->r2_media_url_normalizer()->public_url(
+            $permanent_url = Tube_Core_Plugin::instance()->r2_media_url_normalizer()->public_url(
                 self::REAL_R2_OBJECT_KEY
             );
 
             self::assertStringContainsString('data-tube-player', $html);
             self::assertStringContainsString('data-source-type="r2_mp4"', $html);
-            self::assertStringContainsString('data-embed-url="' . esc_url($expected_url) . '"', $html);
+            // The signed URL is still anchored to the permanent URL (same
+            // host/path) -- it's the query string that must carry exp/sig
+            // and never appear as the bare, unsigned permanent URL alone.
+            self::assertStringContainsString('data-embed-url="' . esc_url($permanent_url) . '?exp=', $html);
+            self::assertStringNotContainsString('data-embed-url="' . esc_url($permanent_url) . '"', $html);
+            // esc_url() HTML-entity-encodes the '&' between query params
+            // (to '&#038;'), so match loosely on "sig=<hex>" appearing
+            // anywhere inside the attribute rather than assuming a
+            // literal '&' or '?' separator immediately precedes it.
+            self::assertMatchesRegularExpression('/data-embed-url="[^"]*sig=[0-9a-f]{64}[^"]*"/', $html);
             self::assertStringContainsString('<button type="button"', $html);
             self::assertStringContainsString('<noscript>', $html);
         } finally {
@@ -392,8 +405,15 @@ final class TemplateTagsIntegrationTest extends TestCase
     }
 
     /**
-     * `tube_player_get_source_url()` resolves the correct real URL for
-     * both sources — the one shared resolution point SEO/sitemap use.
+     * `tube_player_get_source_url()` resolves the correct URL for both
+     * sources — the one shared resolution point SEO/sitemap use. For
+     * Cloudflare Stream this is still the real embed URL (a stable,
+     * long-lived, publicly fetchable URL, safe for JSON-LD/sitemap). For
+     * R2 this is now the video's own watch-page permalink, never the
+     * permanent R2 media URL — putting even a signed (10-minute) URL
+     * into persistent/cached structured data would go stale almost
+     * immediately, and the permanent, unsigned URL must never be
+     * exposed through SEO output now that the R2 bucket is private.
      */
     public function test_source_url_resolves_correctly_for_both_sources(): void
     {
@@ -417,10 +437,14 @@ final class TemplateTagsIntegrationTest extends TestCase
                 CfStreamStatus::Ready
             );
 
-            $expected_r2_url = Tube_Core_Plugin::instance()->r2_media_url_normalizer()->public_url(
+            $permanent_r2_url = Tube_Core_Plugin::instance()->r2_media_url_normalizer()->public_url(
                 self::REAL_R2_OBJECT_KEY
             );
-            self::assertSame($expected_r2_url, tube_player_get_source_url($r2_video_id));
+            $resolved         = tube_player_get_source_url($r2_video_id);
+
+            self::assertSame(get_permalink($r2_video_id), $resolved);
+            self::assertStringNotContainsString('media.nangcuctvc.com', $resolved);
+            self::assertNotSame($permanent_r2_url, $resolved);
         } finally {
             global $wpdb;
             /** @var \wpdb $wpdb */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API.

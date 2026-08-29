@@ -1,0 +1,18 @@
+name = "r2-media-worker"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+
+# R2 bucket binding -- env.MEDIA_BUCKET in src/index.js. `bucket_name`
+# must be the private bucket this project's R2 videos live in (the one
+# TUBE_CORE_R2_MEDIA_BASE_URL's custom domain currently points at
+# directly -- after deploying this Worker, that custom domain should
+# point at the Worker instead, per README.md).
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "REPLACE_WITH_YOUR_BUCKET_NAME"
+
+# The HMAC signing secret is NOT set here -- secrets never belong in a
+# committed file, wrangler.toml included. Set it with:
+#   wrangler secret put R2_SIGNING_SECRET
+# using the exact same value as this project's TUBE_CORE_R2_SIGNING_SECRET
+# (CLOUDFLARE_R2_SIGNING_SECRET in .env). See README.md.

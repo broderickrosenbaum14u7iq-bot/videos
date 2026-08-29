@@ -48,6 +48,15 @@ x-wordpress-env: &wordpress-env
   # rejected). No R2 API credentials needed: playback only ever uses
   # this public custom domain, never the R2 S3 API.
   #
+  # TUBE_CORE_R2_SIGNING_SECRET (added alongside R2 private-bucket
+  # hardening): the shared HMAC secret
+  # Tube_Core\Video\R2\R2PlaybackUrlSigner signs temporary playback URLs
+  # with. The Cloudflare Worker in
+  # infrastructure/cloudflare/r2-media-worker/ must hold the identical
+  # value as its own `R2_SIGNING_SECRET` Worker secret — never the R2 S3
+  # API credentials, and never exposed to JS/post meta/logs. Leave empty
+  # to fail closed (unsigned URLs — see R2PlaybackUrlSigner::sign_url()).
+  #
   # TUBE_PLAYER_* (Phase 6): Tube_Player\Plugin reads these to build
   # Cloudflare Stream/Images URLs at render time — never a stored
   # playback URL (ARCHITECTURE.md §2.1). Signed URLs are opt-in: leaving
@@ -83,6 +92,7 @@ x-wordpress-env: &wordpress-env
     define( 'TUBE_CORE_CLOUDFLARE_STREAM_ACCOUNT_ID', '${CLOUDFLARE_STREAM_ACCOUNT_ID:-}' );
     define( 'TUBE_CORE_CLOUDFLARE_STREAM_API_TOKEN', '${CLOUDFLARE_STREAM_API_TOKEN:-}' );
     define( 'TUBE_CORE_R2_MEDIA_BASE_URL', '${CLOUDFLARE_R2_MEDIA_BASE_URL:-}' );
+    define( 'TUBE_CORE_R2_SIGNING_SECRET', '${CLOUDFLARE_R2_SIGNING_SECRET:-}' );
     define( 'TUBE_PLAYER_CLOUDFLARE_STREAM_CUSTOMER_CODE', '${CLOUDFLARE_STREAM_CUSTOMER_CODE:-}' );
     define( 'TUBE_PLAYER_CLOUDFLARE_STREAM_SIGNING_KEY_ID', '${CLOUDFLARE_STREAM_SIGNING_KEY_ID:-}' );
     define( 'TUBE_PLAYER_CLOUDFLARE_STREAM_SIGNING_KEY_PEM_BASE64', '${CLOUDFLARE_STREAM_SIGNING_KEY_PEM_BASE64:-}' );
