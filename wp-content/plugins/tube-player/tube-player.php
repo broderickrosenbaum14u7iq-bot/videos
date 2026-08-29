@@ -3,7 +3,7 @@
  * Plugin Name:       Tube Player
  * Plugin URI:        https://phimtoico.org
  * Description:       Playback rendering: CF Stream URLs from stored UIDs, click-to-load embed. See ARCHITECTURE.md.
- * Version:           1.1.0
+ * Version:           1.1.1
  * Requires at least: 6.5
  * Requires PHP:      8.3
  * Requires Plugins:  tube-core
@@ -26,7 +26,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-const TUBE_PLAYER_VERSION = '1.1.0';
+const TUBE_PLAYER_VERSION = '1.1.1';
 const TUBE_PLAYER_FILE    = __FILE__;
 const TUBE_PLAYER_DIR     = __DIR__;
 
