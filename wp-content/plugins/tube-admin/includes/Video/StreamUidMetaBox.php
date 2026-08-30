@@ -13,6 +13,8 @@ use Tube_Admin\Support\Request;
 use Tube_Core\Content\VideoPostType;
 use Tube_Core\Plugin as Tube_Core_Plugin;
 use Tube_Core\Video\CfStreamStatus;
+use Tube_Core\Video\R2\R2PlaybackUrlSigner;
+use Tube_Core\Video\R2\R2VideoValidator;
 use Tube_Core\Video\VideoMetadata;
 use Tube_Core\Video\VideoSource;
 use WP_Post;
@@ -649,6 +651,37 @@ final class StreamUidMetaBox
             return;
         }
 
+        // Resolve which real R2 object the admin actually meant *before*
+        // persisting anything. A syntactically-valid key is not
+        // necessarily a real object — admins have repeatedly typed/pasted
+        // a "videos/" folder prefix that exists in their own local
+        // organization but not in the bucket itself, producing a key that
+        // normalizes cleanly but 404s. Verifying reachability up front
+        // (rather than after saving, only to mark the row cf_status=Error)
+        // is what stops a broken key from ever publishing as an unusable
+        // "Video hiện không khả dụng" video in the first place.
+        $resolved_object_key = self::resolve_reachable_object_key(
+            $object_key,
+            $tube_core->r2_playback_url_signer(),
+            $tube_core->r2_video_validator()
+        );
+
+        if (null === $resolved_object_key) {
+            set_transient(
+                self::pending_key($post_id),
+                [
+                    'field' => self::R2_FIELD_NAME,
+                    'value' => $raw_input,
+                    'error' => 'unreachable',
+                ],
+                self::PENDING_TTL_SECONDS
+            );
+
+            return;
+        }
+
+        $object_key = $resolved_object_key;
+
         $metadata_repository = $tube_core->video_metadata_repository();
         $existing_owner_id   = $metadata_repository->find_video_id_by_r2_object_key($object_key);
 
@@ -678,25 +711,48 @@ final class StreamUidMetaBox
         $duration_raw     = sanitize_text_field(wp_unslash(Request::string($_POST, self::R2_DURATION_FIELD_NAME)));
         $duration_seconds = is_numeric($duration_raw) && (int) $duration_raw >= 0 ? (int) $duration_raw : null;
 
-        // Always a live check, even if the object key itself didn't
-        // change on this save — re-saving is also how an admin retries a
-        // video that was transiently unreachable the first time (the
-        // meta box's own "Readiness: unreachable/invalid — re-save to
-        // retry" message points back at exactly this). Signed, not the
-        // bare permanent URL: once the R2 bucket is private behind the
-        // Cloudflare Worker, only a freshly-signed URL is fetchable at
-        // all — this HEAD request is itself real proof the whole
-        // signing/Worker path works end-to-end, not just that the object
-        // exists.
-        $is_reachable = $tube_core->r2_video_validator()->is_reachable_video(
-            $tube_core->r2_playback_url_signer()->sign_url($object_key)
-        );
+        // Reachability of $object_key is already proven by
+        // self::resolve_reachable_object_key() above -- no second HEAD
+        // request needed here, and no path exists anymore for a
+        // just-saved R2 video to land in CfStreamStatus::Error the way
+        // the old always-Ready-or-Error check could.
+        $tube_core->status_updater()->handle_for_video($post_id, CfStreamStatus::Ready, $duration_seconds);
+    }
 
-        $tube_core->status_updater()->handle_for_video(
-            $post_id,
-            $is_reachable ? CfStreamStatus::Ready : CfStreamStatus::Error,
-            $duration_seconds
-        );
+    /**
+     * Resolve a normalized R2 object key to the one that's actually
+     * reachable in the bucket, per this feature's "never blindly strip a
+     * legacy prefix" requirement: the exact submitted key is always
+     * tried first; only if that specific key doesn't exist, and only for
+     * the one known real-world legacy pattern (a `videos/` folder prefix
+     * that isn't part of the actual bucket layout), is the prefix-
+     * stripped candidate tried as a fallback. Whichever candidate is
+     * actually reachable is what gets stored — never a guess.
+     *
+     * @param string              $object_key The normalized (but not yet existence-checked) object key.
+     * @param R2PlaybackUrlSigner $signer     Signs each candidate for the live reachability check.
+     * @param R2VideoValidator    $validator  Performs the live HEAD-request reachability check.
+     *
+     * @return string|null The one real, reachable object key, or null if no candidate is reachable.
+     */
+    private static function resolve_reachable_object_key(
+        string $object_key,
+        R2PlaybackUrlSigner $signer,
+        R2VideoValidator $validator
+    ): ?string {
+        $candidates = [$object_key];
+
+        if (str_starts_with($object_key, 'videos/')) {
+            $candidates[] = substr($object_key, strlen('videos/'));
+        }
+
+        foreach ($candidates as $candidate) {
+            if ($validator->is_reachable_video($signer->sign_url($candidate))) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 
     /**

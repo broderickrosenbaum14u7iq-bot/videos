@@ -290,16 +290,23 @@ final class StreamUidMetaBoxIntegrationTest extends TestCase
      * second video gets no metadata row, and the first video's key is
      * untouched — the R2 counterpart to
      * {@see self::test_save_rejects_a_uid_already_owned_by_a_different_video()}.
+     *
+     * Deliberately uses the real, reachable object key (not a fake one)
+     * so this genuinely exercises the *duplicate* rejection path — a
+     * fake/nonexistent key would instead (correctly) be rejected earlier
+     * by {@see self::test_save_r2_rejects_a_completely_unreachable_key_without_publishing()}'s
+     * reachability check, which would make this test pass for the wrong reason.
      */
     public function test_save_r2_rejects_a_key_already_owned_by_a_different_video(): void
     {
         $first_id  = $this->create_video();
         $second_id = $this->create_video();
-        $shared    = 'videos/shared-' . uniqid('', true) . '.mp4';
+        $shared    = 'EM%20Tu%CC%81%20Nhie%CC%82n%20Qua%CC%89ng%20Ninh%20nangcuc.mp4';
+        $decoded   = "EM Tu\u{0301} Nhie\u{0302}n Qua\u{0309}ng Ninh nangcuc.mp4";
 
         Tube_Core_Plugin::instance()->video_metadata_repository()->create_r2(
             $first_id,
-            $shared,
+            $decoded,
             CfStreamStatus::Ready
         );
 
@@ -309,8 +316,79 @@ final class StreamUidMetaBoxIntegrationTest extends TestCase
         self::assertNull(Tube_Core_Plugin::instance()->video_metadata_repository()->find($second_id));
         self::assertSame(
             $first_id,
-            Tube_Core_Plugin::instance()->video_metadata_repository()->find_video_id_by_r2_object_key($shared)
+            Tube_Core_Plugin::instance()->video_metadata_repository()->find_video_id_by_r2_object_key($decoded)
         );
+    }
+
+    /**
+     * The root-cause fix for a real, repeated production bug (2026-08-30,
+     * dongtoico.org): an admin repeatedly typed/pasted a "videos/" folder
+     * prefix into the R2 field that isn't actually part of the bucket's
+     * object layout, publishing a video whose stored key 404s against the
+     * real Worker — every such video showed "Video hiện không khả dụng"
+     * despite `cf_status` claiming a value, because the old code never
+     * verified reachability *before* persisting the key. Submitting the
+     * real object key with that exact legacy prefix must now resolve to
+     * — and store — the real, reachable key without it, entirely on the
+     * first save (no manual DB correction, no second re-save).
+     */
+    public function test_save_r2_resolves_a_legacy_videos_prefix_to_the_real_reachable_key(): void
+    {
+        $video_id = $this->create_video();
+        $this->submit_r2(
+            'videos/EM%20Tu%CC%81%20Nhie%CC%82n%20Qua%CC%89ng%20Ninh%20nangcuc.mp4',
+            140
+        );
+
+        StreamUidMetaBox::save($video_id);
+
+        $metadata = Tube_Core_Plugin::instance()->video_metadata_repository()->find($video_id);
+        self::assertNotNull($metadata);
+        self::assertSame(VideoSource::R2Mp4, $metadata->source);
+        self::assertSame("EM Tu\u{0301} Nhie\u{0302}n Qua\u{0309}ng Ninh nangcuc.mp4", $metadata->r2_object_key);
+        self::assertSame(CfStreamStatus::Ready, $metadata->cf_status);
+        self::assertSame(140, $metadata->duration_seconds);
+    }
+
+    /**
+     * A syntactically-valid key/URL that isn't a real, reachable R2
+     * object — with or without the legacy "videos/" prefix — must never
+     * silently publish as a broken video. No metadata row is created at
+     * all (the same "reject outright, nothing partially applied" posture
+     * as the unconfigured-host and duplicate-key rejections above), and
+     * the rejection is surfaced back to the admin via the same pending-
+     * transient mechanism those other rejections already use.
+     */
+    public function test_save_r2_rejects_a_completely_unreachable_key_without_publishing(): void
+    {
+        $video_id    = $this->create_video();
+        $fake_object = 'does-not-exist-' . uniqid('', true) . '.mp4';
+
+        $this->submit_r2($fake_object, null);
+        StreamUidMetaBox::save($video_id);
+
+        self::assertNull(Tube_Core_Plugin::instance()->video_metadata_repository()->find($video_id));
+
+        $pending = get_transient('tube_admin_stream_uid_pending_' . $video_id);
+        self::assertIsArray($pending);
+        self::assertSame('unreachable', $pending['error']);
+    }
+
+    /**
+     * The legacy-prefix fallback is not a blind strip: if *neither* the
+     * exact submitted "videos/"-prefixed key nor the un-prefixed
+     * candidate is a real object, the save is rejected the same as any
+     * other unreachable key — never a silent guess.
+     */
+    public function test_save_r2_rejects_a_videos_prefixed_key_when_neither_candidate_exists(): void
+    {
+        $video_id    = $this->create_video();
+        $fake_object = 'videos/does-not-exist-' . uniqid('', true) . '.mp4';
+
+        $this->submit_r2($fake_object, null);
+        StreamUidMetaBox::save($video_id);
+
+        self::assertNull(Tube_Core_Plugin::instance()->video_metadata_repository()->find($video_id));
     }
 
     /**
