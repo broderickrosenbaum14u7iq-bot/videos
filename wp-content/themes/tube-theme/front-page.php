@@ -65,9 +65,16 @@ $tube_theme_all_tags_url    = tube_theme_page_template_url('page-templates/tags.
 // Each primary chip gets its own `type` (not one shared "primary") so
 // each can carry its own distinct two-tone gradient (2026-08-28 chip
 // polish) rather than all three sharing one color.
+// Site-brand navigation wording (docs/DEPLOY_NEW_SITE.md multi-site
+// identity layer) -- only the label text differs per brand; the
+// destination and every other chip stay identical for every site.
+$tube_theme_primary_new_label = 'dongtoico' === tube_theme_site_brand()
+    ? __('Mới Nhất', 'tube-theme')
+    : __('Video Mới', 'tube-theme');
+
 $tube_theme_chips = [
     [
-        'label' => '🆕 ' . __('Video Mới', 'tube-theme'),
+        'label' => '🆕 ' . $tube_theme_primary_new_label,
         'url'   => $tube_theme_latest_url ?? home_url('/#latest'),
         'type'  => 'primary-new',
     ],
@@ -114,7 +121,17 @@ foreach (array_slice($tube_theme_popular_tags, 0, 8) as $tube_theme_chip_tag) {
 
 get_template_part('template-parts/discovery-chips', null, ['chips' => $tube_theme_chips]);
 
-get_template_part('template-parts/hero', null, ['video' => $tube_theme_trending_videos[0] ?? null]);
+get_template_part(
+    'template-parts/hero',
+    null,
+    [
+        'video'    => $tube_theme_trending_videos[0] ?? null,
+        // Only consumed by the dongtoico brand's own featured+trending
+        // hero composition (template-parts/hero.php); every other brand
+        // ignores this key entirely.
+        'trending' => array_slice($tube_theme_trending_videos, 1, 4),
+    ]
+);
 
 $tube_theme_has_any_content = [] !== $tube_theme_trending_videos
     || [] !== $tube_theme_most_viewed

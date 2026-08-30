@@ -75,7 +75,7 @@ if ([] === $tube_theme_badge_names && [] !== $tube_theme_video->studio_ids) {
             <span class="video-card__thumb-placeholder" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z" fill="none" stroke="currentColor" stroke-width="1.5" />
                     <path d="M10 9l6 3-6 3z" /></svg>
-                <span class="video-card__thumb-mark">Phim Tối Cổ</span>
+                <span class="video-card__thumb-mark"><?php echo esc_html(tube_theme_placeholder_brand_text()); ?></span>
             </span>
         <?php endif; ?>
         <span class="video-card__play" aria-hidden="true">

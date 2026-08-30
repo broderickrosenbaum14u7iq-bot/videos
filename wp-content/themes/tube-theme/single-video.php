@@ -102,9 +102,13 @@ while (have_posts()) :
         : [];
     $tube_theme_watch_chip_tags       = tube_theme_popular_tags(6);
 
+    $tube_theme_watch_primary_new_label = 'dongtoico' === tube_theme_site_brand()
+        ? __('Mới Nhất', 'tube-theme')
+        : __('Video Mới', 'tube-theme');
+
     $tube_theme_watch_chips = [
         [
-            'label' => '🆕 ' . __('Video Mới', 'tube-theme'),
+            'label' => '🆕 ' . $tube_theme_watch_primary_new_label,
             'url'   => tube_theme_page_template_url('page-templates/latest.php') ?? home_url('/#latest'),
             'type'  => 'primary-new',
         ],

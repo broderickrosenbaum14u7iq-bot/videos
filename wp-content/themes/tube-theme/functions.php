@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-const TUBE_THEME_VERSION = '1.3.0';
+const TUBE_THEME_VERSION = '1.4.0';
 
 require_once __DIR__ . '/inc/template-functions.php';
 require_once __DIR__ . '/inc/customizer.php';
@@ -57,6 +57,25 @@ add_action(
             tube_theme_asset_version('assets/css/tube-theme.css')
         );
 
+        // Per-site visual identity layer (multi-site hosting, `TUBE_THEME_SITE_BRAND`
+        // constant): loaded ONLY for a site that opts in, on top of the shared
+        // stylesheet above, so every other site's output is byte-for-byte
+        // unaffected. See tube_theme_site_brand()'s own docblock.
+        $brand = tube_theme_site_brand();
+
+        if ('default' !== $brand) {
+            $brand_stylesheet = 'assets/css/site-' . $brand . '.css';
+
+            if (file_exists(get_stylesheet_directory() . '/' . $brand_stylesheet)) {
+                wp_enqueue_style(
+                    'tube-theme-brand-' . $brand,
+                    get_stylesheet_directory_uri() . '/' . $brand_stylesheet,
+                    ['tube-theme'],
+                    tube_theme_asset_version($brand_stylesheet)
+                );
+            }
+        }
+
         wp_enqueue_script(
             'tube-theme',
             get_stylesheet_directory_uri() . '/assets/js/tube-theme.js',
@@ -73,5 +92,14 @@ add_action(
                 'loadMoreError' => __('Couldn\'t load more videos. Use the pagination below instead.', 'tube-theme'),
             ]
         );
+    }
+);
+
+add_filter(
+    'body_class',
+    static function (array $classes): array {
+        $classes[] = 'site-brand-' . tube_theme_site_brand();
+
+        return $classes;
     }
 );

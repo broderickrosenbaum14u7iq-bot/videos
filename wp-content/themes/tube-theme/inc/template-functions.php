@@ -50,6 +50,42 @@ function tube_theme_asset_version(string $relative_path): string
 }
 
 /**
+ * This site's visual-identity brand slug, for multi-site hosting where
+ * more than one independent WordPress install shares this exact theme
+ * codebase (`docs/DEPLOY_NEW_SITE.md`). Reads the optional
+ * `TUBE_THEME_SITE_BRAND` wp-config.php constant (set per-site, never
+ * committed) — a site that doesn't define it (the default/original
+ * install) always resolves to `'default'` and renders byte-identical to
+ * before this feature existed: every consumer of this function
+ * (functions.php's brand stylesheet enqueue + `body_class` filter,
+ * hero.php, video-card.php) only ever branches on a NON-default value.
+ *
+ * `sanitize_html_class()` keeps the returned value safe to use directly
+ * in a CSS class name and a file path fragment (the brand stylesheet's
+ * own filename, `site-{$brand}.css`) without separately validating both.
+ */
+function tube_theme_site_brand(): string
+{
+    $brand = defined('TUBE_THEME_SITE_BRAND') ? TUBE_THEME_SITE_BRAND : 'default';
+    $brand = is_string($brand) ? sanitize_html_class($brand) : '';
+
+    return '' !== $brand ? $brand : 'default';
+}
+
+/**
+ * The empty-thumbnail placeholder's brand mark (template-parts/video-card.php).
+ * Kept as a literal string per brand, NOT `get_bloginfo('name')` — this
+ * displays only inside a fixed poster-shaped box as a small design
+ * element, not as the site's actual name, and the original site's own
+ * literal text must stay pixel-identical regardless of whatever its
+ * `blogname` option happens to be set to.
+ */
+function tube_theme_placeholder_brand_text(): string
+{
+    return 'dongtoico' === tube_theme_site_brand() ? 'Đồng Tối Cổ' : 'Phim Tối Cổ';
+}
+
+/**
  * Batch-prime both WordPress's own post cache and tube-player's video-
  * metadata cache for a list of videos about to be rendered as
  * `template-parts/video-card`s — call once before the loop, not per card.
