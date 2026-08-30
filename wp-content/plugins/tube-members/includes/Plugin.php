@@ -388,14 +388,16 @@ final class Plugin
             return $this->rate_limiter;
         }
 
-        $host = defined('TUBE_CORE_REDIS_HOST') ? TUBE_CORE_REDIS_HOST : '127.0.0.1';
-        $port = defined('TUBE_CORE_REDIS_PORT') ? TUBE_CORE_REDIS_PORT : 6379;
+        $host     = defined('TUBE_CORE_REDIS_HOST') ? TUBE_CORE_REDIS_HOST : '127.0.0.1';
+        $port     = defined('TUBE_CORE_REDIS_PORT') ? TUBE_CORE_REDIS_PORT : 6379;
+        $database = defined('TUBE_CORE_REDIS_DB') ? TUBE_CORE_REDIS_DB : 0;
 
         $this->rate_limiter = new RedisRateLimiter(
             new Client(
                 [
-                    'host' => $host,
-                    'port' => $port,
+                    'host'     => $host,
+                    'port'     => $port,
+                    'database' => $database,
                 ]
             )
         );

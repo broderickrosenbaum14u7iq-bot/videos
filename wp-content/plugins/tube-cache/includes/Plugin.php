@@ -38,6 +38,23 @@ final class Plugin
     private const DEFAULT_REDIS_PORT = 6379;
 
     /**
+     * The Redis logical database index to SELECT, when
+     * TUBE_CACHE_REDIS_DB is not defined. Redis's own multi-database
+     * feature (0-15 by default) is the standard way to isolate unrelated
+     * applications sharing one Redis server without needing a separate
+     * process per site — every cache key in this plugin
+     * (`CacheKeys::trending()`, `::most_viewed()`, etc.) is a plain,
+     * unnamespaced string, so two independent WordPress installs that
+     * both fall back to this same default host/port would otherwise
+     * silently read and overwrite each other's cached "Trending"/"Most
+     * Viewed"/"Recently Added" listings — exactly the cross-site data
+     * leak found running phimtoico.org and dongtoico.org on the same
+     * VPS. Each independent site sharing this Redis server must set its
+     * own distinct `TUBE_CACHE_REDIS_DB` value.
+     */
+    private const DEFAULT_REDIS_DATABASE = 0;
+
+    /**
      * The shared instance, lazily created by self::instance().
      *
      * @var self|null
@@ -102,14 +119,16 @@ final class Plugin
     public function cache(): CacheInterface
     {
         if (null === $this->cache) {
-            $host = defined('TUBE_CACHE_REDIS_HOST') ? TUBE_CACHE_REDIS_HOST : self::DEFAULT_REDIS_HOST;
-            $port = defined('TUBE_CACHE_REDIS_PORT') ? TUBE_CACHE_REDIS_PORT : self::DEFAULT_REDIS_PORT;
+            $host     = defined('TUBE_CACHE_REDIS_HOST') ? TUBE_CACHE_REDIS_HOST : self::DEFAULT_REDIS_HOST;
+            $port     = defined('TUBE_CACHE_REDIS_PORT') ? TUBE_CACHE_REDIS_PORT : self::DEFAULT_REDIS_PORT;
+            $database = defined('TUBE_CACHE_REDIS_DB') ? TUBE_CACHE_REDIS_DB : self::DEFAULT_REDIS_DATABASE;
 
             $this->cache = new RedisCache(
                 new Client(
                     [
-                        'host' => $host,
-                        'port' => $port,
+                        'host'     => $host,
+                        'port'     => $port,
+                        'database' => $database,
                     ]
                 )
             );

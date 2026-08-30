@@ -393,11 +393,23 @@ final class Plugin
     {
         $host = defined('TUBE_CORE_REDIS_HOST') ? TUBE_CORE_REDIS_HOST : '127.0.0.1';
         $port = defined('TUBE_CORE_REDIS_PORT') ? TUBE_CORE_REDIS_PORT : 6379;
+        // Redis's own multi-database feature (0-15 by default) is the
+        // standard way to isolate unrelated applications sharing one
+        // Redis server without needing a separate process per site --
+        // buffered view counts and rate-limit windows here use plain,
+        // unnamespaced keys (e.g. "views:<video_id>"), so two independent
+        // WordPress installs both falling back to this same default
+        // host/port would otherwise silently collide on each other's
+        // counters. Each site sharing this Redis server must set its own
+        // distinct TUBE_CORE_REDIS_DB value (see Tube_Cache\Plugin's
+        // matching TUBE_CACHE_REDIS_DB for the same fix on that side).
+        $database = defined('TUBE_CORE_REDIS_DB') ? TUBE_CORE_REDIS_DB : 0;
 
         return new Client(
             [
-                'host' => $host,
-                'port' => $port,
+                'host'     => $host,
+                'port'     => $port,
+                'database' => $database,
             ]
         );
     }
