@@ -32,6 +32,27 @@
     border: 0;
 }
 
+/*
+ * R2/direct-MP4's native <video> (tube-player.js's buildR2Video()) had no
+ * rule here at all, unlike iframe above -- it rendered at its raw
+ * intrinsic pixel size (e.g. a vertical video's real 406x722 resolution)
+ * inside this reserved 16:9 box, clipped by .tube-player's own
+ * overflow:hidden into an oversized, off-center crop. object-fit: contain
+ * (not iframe's plain 100%/100%, which only works there because an
+ * iframe's own embedded player does its own internal letterboxing) is
+ * what a native <video> element needs to preserve its intrinsic aspect
+ * ratio -- horizontal or vertical -- inside this box without stretching
+ * or cropping, matching iframe's fill-the-box positioning otherwise.
+ */
+.tube-player video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center;
+}
+
 .tube-player__play {
     position: absolute;
     inset: 0;
