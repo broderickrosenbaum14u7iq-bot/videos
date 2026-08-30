@@ -221,6 +221,14 @@ body.site-brand-dongtoico .hero__cta:hover {
 body.site-brand-dongtoico .hero--dongtoico {
     display: flex;
     flex-direction: column;
+    /* Overrides the shared `.hero` rule's own `align-items: flex-end`
+       (needed there for the default single-hero's absolutely-positioned
+       children) -- without this, a column flex item with no explicit
+       width sizes to its own content and sits flush-right instead of
+       stretching to fill the row, which is exactly what happened to
+       `.hero__featured` here before this fix (verified live: computed
+       width was 123px of a 390px viewport, anchored to the right edge). */
+    align-items: stretch;
     gap: var(--space-3);
     background: transparent;
     border-radius: 0;
