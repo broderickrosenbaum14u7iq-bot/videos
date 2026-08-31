@@ -108,6 +108,22 @@ body.site-brand-clipbanquat .mega-menu {
     border-color: var(--color-border);
 }
 
+/* The shared .mega-menu is `left: 0` relative to its own nav item,
+   safe by default since that item (Danh Mục) sits near the header's
+   left edge. Moving .site-nav to the right side of the header (this
+   brand's own reordered header, above) put that same left:0 anchor
+   far enough right that the panel's fixed 720px width pushed past the
+   viewport's right edge -- confirmed live: page scrollWidth 1898px
+   against a 1440px viewport, entirely from this one (offscreen/closed)
+   element. Anchoring from the right instead keeps the panel within the
+   document at every width the reordered header actually uses it at. */
+@media (min-width: 1024px) {
+    body.site-brand-clipbanquat .mega-menu {
+        left: auto;
+        right: 0;
+    }
+}
+
 body.site-brand-clipbanquat .mega-menu__link:hover {
     color: var(--color-accent);
 }
