@@ -68,23 +68,21 @@ $tube_theme_all_tags_url    = tube_theme_page_template_url('page-templates/tags.
 // Site-brand navigation wording (docs/DEPLOY_NEW_SITE.md multi-site
 // identity layer) -- only the label text differs per brand; the
 // destination and every other chip stay identical for every site.
-$tube_theme_primary_new_label = 'dongtoico' === tube_theme_site_brand()
-    ? __('Mới Nhất', 'tube-theme')
-    : __('Video Mới', 'tube-theme');
+$tube_theme_primary_labels = tube_theme_primary_chip_labels();
 
 $tube_theme_chips = [
     [
-        'label' => '🆕 ' . $tube_theme_primary_new_label,
+        'label' => '🆕 ' . $tube_theme_primary_labels['new'],
         'url'   => $tube_theme_latest_url ?? home_url('/#latest'),
         'type'  => 'primary-new',
     ],
     [
-        'label' => '🔥 ' . __('Thịnh Hành', 'tube-theme'),
+        'label' => '🔥 ' . $tube_theme_primary_labels['trending'],
         'url'   => $tube_theme_trending_url ?? home_url('/#trending'),
         'type'  => 'primary-trending',
     ],
     [
-        'label' => '👀 ' . __('Xem Nhiều', 'tube-theme'),
+        'label' => '👀 ' . $tube_theme_primary_labels['popular'],
         'url'   => $tube_theme_most_viewed_url ?? home_url('/#most-viewed'),
         'type'  => 'primary-popular',
     ],

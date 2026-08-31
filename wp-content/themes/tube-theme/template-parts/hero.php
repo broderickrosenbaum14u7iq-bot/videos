@@ -118,6 +118,110 @@ if ('dongtoico' === tube_theme_site_brand()) {
     return;
 }
 
+// clipbanquat's own "Spotlight" composition -- structurally similar to
+// dongtoico's (featured + side stack) but kept as an entirely separate
+// branch/class namespace (hero--clipbanquat, never hero--dongtoico) so
+// this can carry clipbanquat-specific data (duration + first category
+// on the featured item, which dongtoico's own composition intentionally
+// does not show) with zero risk of altering dongtoico's own unchanged
+// output.
+if ('clipbanquat' === tube_theme_site_brand()) {
+    /** @var SearchIndexRow[] $tube_theme_spotlight_side */ // phpcs:ignore Generic.Commenting.DocComment.MissingShort -- PHPStan type-narrowing annotation, not documented API; a short description adds nothing.
+    $tube_theme_spotlight_side = isset($args['trending']) && is_array($args['trending'])
+        ? array_slice($args['trending'], 0, 3)
+        : [];
+
+    $tube_theme_spotlight_duration = tube_theme_format_duration($tube_theme_video->duration_seconds);
+
+    $tube_theme_spotlight_categories = get_the_terms($tube_theme_video->video_id, 'video_category');
+    $tube_theme_spotlight_category   = is_array($tube_theme_spotlight_categories) && [] !== $tube_theme_spotlight_categories
+        ? $tube_theme_spotlight_categories[0]
+        : null;
+    ?>
+    <section class="hero hero--clipbanquat<?php echo [] !== $tube_theme_spotlight_side ? ' hero--has-side' : ''; ?>">
+        <a class="hero__featured" href="<?php echo esc_url($tube_theme_permalink); ?>">
+            <div class="hero__media">
+                <?php
+                // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- already escapes every interpolated value (esc_url()/esc_attr()), verified in Phase 6.
+                echo tube_player_get_image_html(
+                    $tube_theme_video->video_id,
+                    'hero',
+                    [
+                        'eager'         => true,
+                        'fetchpriority' => 'high',
+                        'alt'           => $tube_theme_video->title,
+                    ]
+                );
+                ?>
+            </div>
+            <div class="hero__scrim"></div>
+            <?php if ('' !== $tube_theme_spotlight_duration) : ?>
+                <span class="hero__duration"><?php echo esc_html($tube_theme_spotlight_duration); ?></span>
+            <?php endif; ?>
+            <div class="hero__content">
+                <span class="hero__eyebrow"><?php esc_html_e('Nổi Bật', 'tube-theme'); ?></span>
+                <h1 class="hero__title"><?php echo esc_html($tube_theme_video->title); ?></h1>
+                <p class="hero__meta">
+                    <?php
+                    printf(
+                        /* translators: %s: formatted view count. */
+                        esc_html__('%s lượt xem', 'tube-theme'),
+                        esc_html(tube_theme_compact_number($tube_theme_video->views_total))
+                    );
+                    ?>
+                    <?php if (null !== $tube_theme_spotlight_category) : ?>
+                        <span class="hero__meta-category"><?php echo esc_html($tube_theme_spotlight_category->name); ?></span>
+                    <?php endif; ?>
+                </p>
+                <span class="hero__cta">
+                    ▶ <?php esc_html_e('Xem ngay', 'tube-theme'); ?>
+                </span>
+            </div>
+        </a>
+        <?php if ([] !== $tube_theme_spotlight_side) : ?>
+            <div class="hero__side">
+                <?php foreach ($tube_theme_spotlight_side as $tube_theme_side_video) : ?>
+                    <?php
+                    $tube_theme_side_permalink = get_permalink($tube_theme_side_video->video_id);
+                    $tube_theme_side_permalink = false === $tube_theme_side_permalink ? '' : $tube_theme_side_permalink;
+                    $tube_theme_side_duration  = tube_theme_format_duration($tube_theme_side_video->duration_seconds);
+                    ?>
+                    <a class="hero__side-card" href="<?php echo esc_url($tube_theme_side_permalink); ?>">
+                        <span class="hero__side-thumb">
+                            <?php
+                            // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- already escapes every interpolated value (esc_url()/esc_attr()), verified in Phase 6.
+                            echo tube_player_get_image_html(
+                                $tube_theme_side_video->video_id,
+                                'grid_card',
+                                ['alt' => $tube_theme_side_video->title]
+                            );
+                            ?>
+                            <?php if ('' !== $tube_theme_side_duration) : ?>
+                                <span class="hero__side-duration"><?php echo esc_html($tube_theme_side_duration); ?></span>
+                            <?php endif; ?>
+                        </span>
+                        <span class="hero__side-body">
+                            <span class="hero__side-title"><?php echo esc_html($tube_theme_side_video->title); ?></span>
+                            <span class="hero__side-views">
+                                <?php
+                                printf(
+                                    /* translators: %s: formatted view count. */
+                                    esc_html__('%s lượt xem', 'tube-theme'),
+                                    esc_html(tube_theme_compact_number($tube_theme_side_video->views_total))
+                                );
+                                ?>
+                            </span>
+                        </span>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+    </section>
+    <?php
+
+    return;
+}
+
 ?>
 <section class="hero">
     <div class="hero__media">

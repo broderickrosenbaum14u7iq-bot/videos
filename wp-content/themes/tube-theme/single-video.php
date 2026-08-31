@@ -102,23 +102,21 @@ while (have_posts()) :
         : [];
     $tube_theme_watch_chip_tags       = tube_theme_popular_tags(6);
 
-    $tube_theme_watch_primary_new_label = 'dongtoico' === tube_theme_site_brand()
-        ? __('Mới Nhất', 'tube-theme')
-        : __('Video Mới', 'tube-theme');
+    $tube_theme_watch_primary_labels = tube_theme_primary_chip_labels();
 
     $tube_theme_watch_chips = [
         [
-            'label' => '🆕 ' . $tube_theme_watch_primary_new_label,
+            'label' => '🆕 ' . $tube_theme_watch_primary_labels['new'],
             'url'   => tube_theme_page_template_url('page-templates/latest.php') ?? home_url('/#latest'),
             'type'  => 'primary-new',
         ],
         [
-            'label' => '🔥 ' . __('Thịnh Hành', 'tube-theme'),
+            'label' => '🔥 ' . $tube_theme_watch_primary_labels['trending'],
             'url'   => tube_theme_page_template_url('page-templates/trending.php') ?? home_url('/#trending'),
             'type'  => 'primary-trending',
         ],
         [
-            'label' => '👀 ' . __('Xem Nhiều', 'tube-theme'),
+            'label' => '👀 ' . $tube_theme_watch_primary_labels['popular'],
             'url'   => tube_theme_page_template_url('page-templates/most-viewed.php') ?? home_url('/#most-viewed'),
             'type'  => 'primary-popular',
         ],

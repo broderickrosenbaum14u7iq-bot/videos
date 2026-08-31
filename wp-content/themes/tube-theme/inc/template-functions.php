@@ -82,7 +82,41 @@ function tube_theme_site_brand(): string
  */
 function tube_theme_placeholder_brand_text(): string
 {
-    return 'dongtoico' === tube_theme_site_brand() ? 'Đồng Tối Cổ' : 'Phim Tối Cổ';
+    return match (tube_theme_site_brand()) {
+        'dongtoico'   => 'Đồng Tối Cổ',
+        'clipbanquat' => 'Clip Bán Quạt',
+        default       => 'Phim Tối Cổ',
+    };
+}
+
+/**
+ * The three fixed primary discovery-chip labels (front-page.php,
+ * single-video.php) — same three real destinations (Latest/Trending/
+ * Most-Viewed page-template URLs) for every brand, only the wording
+ * differs. Keyed the same as the `type` each chip already carries
+ * (`discovery-chips.php`'s own `--primary-new/-trending/-popular`).
+ *
+ * @return array{new: string, trending: string, popular: string}
+ */
+function tube_theme_primary_chip_labels(): array
+{
+    return match (tube_theme_site_brand()) {
+        'clipbanquat' => [
+            'new'      => __('Mới Đăng', 'tube-theme'),
+            'trending' => __('Đang Hot', 'tube-theme'),
+            'popular'  => __('Xem Nhiều', 'tube-theme'),
+        ],
+        'dongtoico' => [
+            'new'      => __('Mới Nhất', 'tube-theme'),
+            'trending' => __('Thịnh Hành', 'tube-theme'),
+            'popular'  => __('Xem Nhiều', 'tube-theme'),
+        ],
+        default => [
+            'new'      => __('Video Mới', 'tube-theme'),
+            'trending' => __('Thịnh Hành', 'tube-theme'),
+            'popular'  => __('Xem Nhiều', 'tube-theme'),
+        ],
+    };
 }
 
 /**
