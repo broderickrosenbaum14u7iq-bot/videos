@@ -97,6 +97,8 @@ curl -s https://api.wordpress.org/secret-key/1.1/salt/
 
 Append the project-specific constants below, using this site's *own* values — see the "Constant reference" section for what each one does and whether it's required.
 
+If the panel already generated `wp-config.php` for you (e.g. aaPanel's one-click WordPress installer, which pre-populates `DB_*`, salts, *and* `define('WP_DEBUG', false)`), check for an existing `WP_DEBUG` define before appending your own — a real clone hit this: the standard-hardening block below already includes `WP_DEBUG`, and appending a second `define('WP_DEBUG', ...)` produces a "Constant WP_DEBUG already defined" PHP warning on every single request (harmless, but noisy in the error log and worth avoiding). Drop whichever of the two is redundant.
+
 ## 6. Configure the site URL
 
 Set via the standard WordPress install (`wp core install --url=https://<new-domain> --title="..." --admin_user=... --admin_email=...`), which writes `siteurl`/`home` into `wp_options` — do not hardcode `WP_HOME`/`WP_SITEURL` as wp-config constants unless this environment specifically needs to derive them from a dynamic `Host` header (see this repo's `docker-compose.yml` for that local-dev-only pattern; production sites should not need it).
@@ -184,7 +186,7 @@ If cloning an existing, already-working vhost template on the same panel, the ng
 - `nginx -t` passes.
 - `curl -I https://<new-domain>/` returns a valid HTTPS response with a certificate for the correct domain.
 - HTTP redirects to HTTPS.
-- A pretty-permalink URL (not just `/`) returns 200, confirming the rewrite rule is in place.
+- A pretty-permalink URL (not just `/`) returns 200, confirming the rewrite rule is in place. Do not assume this from `/` returning 200 alone — a real clone hit an aaPanel-created site whose `vhost/rewrite/<domain>.conf` include (referenced by the main vhost's `#REWRITE-START` block) was silently **empty**, so `/` (served directly by `index.php`) worked fine while every other URL 404'd. If it's empty, populate it with the standard `location / { try_files $uri $uri/ /index.php?$args; }` block (PHP routing is already handled by the vhost's own `include enable-php-83.conf`, so no second `location ~ \.php$` block is needed) and reload nginx.
 
 ## 13. Run smoke tests
 
