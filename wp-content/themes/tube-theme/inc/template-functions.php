@@ -85,6 +85,7 @@ function tube_theme_placeholder_brand_text(): string
     return match (tube_theme_site_brand()) {
         'dongtoico'   => 'Đồng Tối Cổ',
         'clipbanquat' => 'Clip Bán Quạt',
+        'clipphotvn'  => 'Clip Hot VN',
         default       => 'Phim Tối Cổ',
     };
 }
@@ -104,6 +105,11 @@ function tube_theme_primary_chip_labels(): array
         'clipbanquat' => [
             'new'      => __('Mới Đăng', 'tube-theme'),
             'trending' => __('Đang Hot', 'tube-theme'),
+            'popular'  => __('Xem Nhiều', 'tube-theme'),
+        ],
+        'clipphotvn' => [
+            'new'      => __('Mới Nhất', 'tube-theme'),
+            'trending' => __('Nổi Bật', 'tube-theme'),
             'popular'  => __('Xem Nhiều', 'tube-theme'),
         ],
         'dongtoico' => [

@@ -176,6 +176,18 @@ $tube_theme_has_any_content = [] !== $tube_theme_trending_videos
     </div>
 <?php endif; ?>
 
+<?php
+// clipphotvn's own "editorial mosaic" section (brief's own "ONE special
+// mid-homepage section") -- built from Most Viewed data specifically so
+// it doesn't just repeat the same rows the hero/Trending section above
+// already used from Trending. Only this one brand ever calls it;
+// mosaic.php itself renders nothing for every other brand's page
+// request in practice since front-page.php simply never calls it then.
+if ('clipphotvn' === tube_theme_site_brand()) {
+    get_template_part('template-parts/mosaic', null, ['videos' => $tube_theme_most_viewed]);
+}
+?>
+
 <?php if ([] !== $tube_theme_recently_added) : ?>
     <div class="section section--recent" id="latest">
         <div class="section-heading-row">

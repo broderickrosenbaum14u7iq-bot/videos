@@ -1,0 +1,709 @@
+/*
+ * Clip Hot VN -- site-brand visual identity layer.
+ *
+ * Loaded ONLY on the site that defines `TUBE_THEME_SITE_BRAND` =
+ * 'clipphotvn' (functions.php's own enqueue), on top of the shared
+ * tube-theme.css -- every selector here is scoped under
+ * `body.site-brand-clipphotvn` so it can never affect any other site
+ * sharing this theme codebase. Same proven approach as
+ * site-dongtoico.css/site-clipbanquat.css: a straight token swap covers
+ * most of the reskin for free (tube-theme.css/tube-members.css/
+ * tube-comments.css all read the same `var(--color-*)` custom
+ * properties); the rest is targeted overrides plus the two genuinely
+ * new components (template-parts/hero.php's clipphotvn branch,
+ * template-parts/mosaic.php) this brand's own PHP renders.
+ *
+ * Deliberately does NOT reorder the header via flexbox `order` the way
+ * site-clipbanquat.css does -- that reorder is exactly what caused a
+ * real production bug there (the shared .mega-menu's `left: 0` anchor,
+ * safe near the header's left edge, overflowed the viewport once moved
+ * near the right edge; see that file's own fix commit). The header's
+ * natural DOM order (brand, nav, search pushed right via the shared
+ * `margin-left: auto`, account) already reads as "brand left / nav
+ * lower-center / search+account right" without moving anything.
+ */
+
+body.site-brand-clipphotvn {
+    /* Luxury dark violet / magenta / champagne palette -- deliberately
+       distinct from the shared default (pink), dongtoico (amber), and
+       clipbanquat (cyan). */
+    --color-bg: #07060a;
+    --color-surface: #121019;
+    --color-surface-elevated: #18141f;
+    --color-surface-hover: #211a29;
+    --color-text: #faf7ff;
+    --color-text-muted: #a8a0b3;
+    --color-text-faint: #847d90;
+    --color-border: #241f2d;
+    --color-border-strong: #34293f;
+
+    --color-accent: #8b5cf6;
+    --color-accent-hover: #a78bfa;
+    --color-accent-contrast: #17102b;
+    --color-scrim: rgba(7, 6, 10, 0.88);
+
+    --cpv-accent-2: #d946ef;
+    --cpv-champagne: #f5d0a9;
+    --cpv-glow: 0 0 0 1px rgba(139, 92, 246, 0.18), 0 10px 28px rgba(139, 92, 246, 0.14);
+}
+
+/* ==========================================================================
+   Header -- premium translucent surface, subtle violet glow border, no
+   structural reorder (see docblock above for why).
+   ========================================================================== */
+
+body.site-brand-clipphotvn .site-header {
+    background: rgba(10, 8, 14, 0.86);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--color-border);
+    box-shadow: 0 1px 0 rgba(139, 92, 246, 0.12);
+    padding-top: 11px;
+    padding-bottom: 11px;
+}
+
+body.site-brand-clipphotvn .site-brand__accent {
+    color: var(--color-accent);
+    text-shadow: 0 0 12px rgba(139, 92, 246, 0.55);
+}
+
+body.site-brand-clipphotvn .site-nav__link:hover,
+body.site-brand-clipphotvn .site-nav__item:focus-within .site-nav__link {
+    color: var(--color-accent-hover);
+}
+
+body.site-brand-clipphotvn .site-header__search-field {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+    border-radius: 999px;
+}
+
+body.site-brand-clipphotvn .site-header__search-field:focus-within {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.16);
+}
+
+body.site-brand-clipphotvn .mega-menu {
+    background: var(--color-surface-elevated);
+    border-color: var(--color-border);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(139, 92, 246, 0.08);
+}
+
+body.site-brand-clipphotvn .mega-menu__link:hover {
+    color: var(--color-accent-hover);
+}
+
+/* ==========================================================================
+   Discovery chips -- flattened dark pills; only the primary trio and
+   hover/active state carry the violet->magenta accent.
+   ========================================================================== */
+
+body.site-brand-clipphotvn [class*="discovery-chip--"],
+body.site-brand-clipphotvn [class*="tag-chip--c"] {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    box-shadow: none;
+    color: var(--color-text-muted);
+    border-radius: 999px;
+}
+
+body.site-brand-clipphotvn [class*="discovery-chip--"]:hover,
+body.site-brand-clipphotvn [class*="discovery-chip--"]:focus-visible,
+body.site-brand-clipphotvn [class*="tag-chip--c"]:hover,
+body.site-brand-clipphotvn [class*="tag-chip--c"]:focus-visible {
+    background: var(--color-surface-hover);
+    border-color: var(--color-accent);
+    color: var(--color-text);
+    filter: none;
+    transform: none;
+}
+
+body.site-brand-clipphotvn .discovery-chip--primary-new,
+body.site-brand-clipphotvn .discovery-chip--primary-trending,
+body.site-brand-clipphotvn .discovery-chip--primary-popular {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.16) 0%, rgba(217, 70, 239, 0.16) 100%);
+    border: 1px solid rgba(139, 92, 246, 0.4);
+    color: #e9d5ff;
+    font-weight: 700;
+}
+
+body.site-brand-clipphotvn .discovery-chip--primary-new:hover,
+body.site-brand-clipphotvn .discovery-chip--primary-new:focus-visible,
+body.site-brand-clipphotvn .discovery-chip--primary-trending:hover,
+body.site-brand-clipphotvn .discovery-chip--primary-trending:focus-visible,
+body.site-brand-clipphotvn .discovery-chip--primary-popular:hover,
+body.site-brand-clipphotvn .discovery-chip--primary-popular:focus-visible {
+    background: linear-gradient(135deg, var(--color-accent) 0%, var(--cpv-accent-2) 100%);
+    border-color: transparent;
+    color: #fff;
+}
+
+/* ==========================================================================
+   Section headings -- gradient bar + thin line extending right, a
+   distinct geometric language from dongtoico's plain bar and
+   clipbanquat's rotated square.
+   ========================================================================== */
+
+body.site-brand-clipphotvn .section-heading-row {
+    position: relative;
+}
+
+body.site-brand-clipphotvn .section-heading {
+    position: relative;
+    padding-left: 16px;
+    border-left: none;
+    letter-spacing: -0.01em;
+}
+
+body.site-brand-clipphotvn .section-heading::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.1em;
+    bottom: 0.1em;
+    width: 4px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, var(--color-accent) 0%, var(--cpv-accent-2) 100%);
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.55);
+}
+
+body.site-brand-clipphotvn .section-heading-row::after {
+    content: "";
+    flex: 1 1 auto;
+    height: 1px;
+    margin-left: var(--space-4);
+    background: linear-gradient(90deg, rgba(139, 92, 246, 0.35) 0%, rgba(139, 92, 246, 0) 100%);
+    align-self: center;
+    order: 1;
+}
+
+body.site-brand-clipphotvn .section-view-all {
+    color: var(--color-accent-hover);
+    order: 2;
+}
+
+body.site-brand-clipphotvn .section-view-all:hover {
+    color: #fff;
+}
+
+/* ==========================================================================
+   Video cards
+   ========================================================================== */
+
+body.site-brand-clipphotvn .video-card__thumb {
+    border-radius: 13px;
+    transition: box-shadow var(--transition-base), transform var(--transition-base), filter var(--transition-base);
+}
+
+@media (hover: hover) and (pointer: fine) {
+    body.site-brand-clipphotvn .video-card:hover .video-card__thumb {
+        box-shadow: var(--cpv-glow);
+        transform: translateY(-2px) scale(1.015);
+    }
+
+    body.site-brand-clipphotvn .video-card__thumb::after {
+        background: linear-gradient(0deg, rgba(139, 92, 246, 0.35) 0%, rgba(0, 0, 0, 0) 55%);
+    }
+}
+
+body.site-brand-clipphotvn .video-card__play svg {
+    fill: var(--color-accent-hover);
+    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.7));
+}
+
+body.site-brand-clipphotvn .video-card__duration {
+    border-radius: 5px;
+    font-weight: 600;
+    background: rgba(7, 6, 10, 0.82);
+    border: 1px solid rgba(139, 92, 246, 0.25);
+}
+
+body.site-brand-clipphotvn .video-card__title {
+    font-weight: 700;
+    letter-spacing: -0.005em;
+}
+
+/* ==========================================================================
+   Hero -- default single-video composition (used directly by
+   template-parts/hero.php's clipphotvn branch, same markup/classes as
+   the shared default hero, just restyled) plus the hero-rail strip.
+   ========================================================================== */
+
+body.site-brand-clipphotvn .hero {
+    border-radius: 18px;
+    background: var(--color-surface);
+    min-height: clamp(220px, 38vw, 480px);
+}
+
+body.site-brand-clipphotvn .hero__scrim {
+    background: linear-gradient(0deg, var(--color-bg) 0%, rgba(139, 92, 246, 0.12) 45%, rgba(7, 6, 10, 0.05) 100%);
+}
+
+body.site-brand-clipphotvn .hero__eyebrow {
+    background: linear-gradient(135deg, var(--color-accent) 0%, var(--cpv-accent-2) 100%);
+    color: #fff;
+    letter-spacing: 0.08em;
+}
+
+body.site-brand-clipphotvn .hero__title {
+    text-shadow: 0 2px 20px rgba(0, 0, 0, 0.5);
+}
+
+body.site-brand-clipphotvn .hero__meta-category {
+    display: inline-block;
+    margin-left: var(--space-2);
+    padding: 1px 8px;
+    background: rgba(139, 92, 246, 0.14);
+    border: 1px solid rgba(139, 92, 246, 0.4);
+    border-radius: 999px;
+    color: #e9d5ff;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+body.site-brand-clipphotvn .hero__duration {
+    position: absolute;
+    z-index: 2;
+    right: 16px;
+    top: 16px;
+    padding: 4px 10px;
+    background: var(--color-scrim);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    color: var(--color-text);
+    font-size: 0.75rem;
+    font-weight: 700;
+    border-radius: 999px;
+}
+
+body.site-brand-clipphotvn .hero__cta {
+    background: linear-gradient(135deg, var(--color-accent) 0%, var(--cpv-accent-2) 100%);
+    color: #fff;
+    font-weight: 700;
+    box-shadow: 0 6px 20px rgba(139, 92, 246, 0.35);
+}
+
+body.site-brand-clipphotvn .hero__cta:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+}
+
+body.site-brand-clipphotvn .hero-rail {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-3);
+    margin: var(--space-3) 0 var(--space-6);
+}
+
+body.site-brand-clipphotvn .hero-rail__item {
+    display: flex;
+    flex-direction: column;
+    color: var(--color-text);
+}
+
+body.site-brand-clipphotvn .hero-rail__thumb {
+    position: relative;
+    display: block;
+    border-radius: 11px;
+    overflow: hidden;
+    background: var(--color-surface);
+    aspect-ratio: 16 / 9;
+    margin-bottom: var(--space-2);
+}
+
+body.site-brand-clipphotvn .hero-rail__thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--transition-base);
+}
+
+body.site-brand-clipphotvn .hero-rail__item:hover .hero-rail__thumb img,
+body.site-brand-clipphotvn .hero-rail__item:focus-visible .hero-rail__thumb img {
+    transform: scale(1.04);
+}
+
+body.site-brand-clipphotvn .hero-rail__duration {
+    position: absolute;
+    right: 6px;
+    bottom: 6px;
+    padding: 1px 6px;
+    background: var(--color-scrim);
+    color: var(--color-text);
+    font-size: 0.7rem;
+    font-weight: 700;
+    border-radius: 4px;
+}
+
+body.site-brand-clipphotvn .hero-rail__title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+@media (max-width: 640px) {
+    body.site-brand-clipphotvn .hero-rail {
+        display: flex;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        scroll-snap-type: x proximity;
+    }
+
+    body.site-brand-clipphotvn .hero-rail::-webkit-scrollbar {
+        display: none;
+    }
+
+    body.site-brand-clipphotvn .hero-rail__item {
+        flex: 0 0 42vw;
+        scroll-snap-align: start;
+    }
+}
+
+/* ==========================================================================
+   "Nổi Bật" / Trending section -- restyled as a horizontal-scroll "Hot
+   Now" rail with CSS-counter rank badges (no PHP/markup change needed:
+   pure CSS numbering of the existing .video-grid > .video-card items).
+   ========================================================================== */
+
+body.site-brand-clipphotvn .trending-with-tags__main,
+body.site-brand-clipphotvn .trending-with-tags__aside {
+    min-width: 0;
+}
+
+body.site-brand-clipphotvn .section--trending .video-grid {
+    display: flex;
+    gap: var(--space-3);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    counter-reset: cpv-hot-rank;
+    scroll-snap-type: x proximity;
+    min-width: 0;
+}
+
+body.site-brand-clipphotvn .section--trending .video-grid::-webkit-scrollbar {
+    display: none;
+}
+
+body.site-brand-clipphotvn .section--trending .video-grid .video-card {
+    flex: 0 0 clamp(150px, 24vw, 220px);
+    scroll-snap-align: start;
+    position: relative;
+}
+
+body.site-brand-clipphotvn .section--trending .video-grid .video-card .video-card__thumb::before {
+    counter-increment: cpv-hot-rank;
+    content: counter(cpv-hot-rank, decimal-leading-zero);
+    position: absolute;
+    z-index: 2;
+    left: 8px;
+    top: 8px;
+    padding: 2px 8px;
+    background: linear-gradient(135deg, var(--color-accent) 0%, var(--cpv-accent-2) 100%);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 800;
+    border-radius: 999px;
+    letter-spacing: 0.02em;
+}
+
+/* ==========================================================================
+   Editorial mosaic section (template-parts/mosaic.php)
+   ========================================================================== */
+
+body.site-brand-clipphotvn .mosaic {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: var(--space-4);
+    align-items: stretch;
+}
+
+body.site-brand-clipphotvn .mosaic__main {
+    position: relative;
+    display: block;
+    border-radius: 16px;
+    overflow: hidden;
+    background: var(--color-surface);
+    min-height: clamp(240px, 32vw, 420px);
+    color: var(--color-text);
+}
+
+body.site-brand-clipphotvn .mosaic__main-media {
+    position: absolute;
+    inset: 0;
+}
+
+body.site-brand-clipphotvn .mosaic__main-media img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--transition-base);
+}
+
+body.site-brand-clipphotvn .mosaic__main:hover .mosaic__main-media img,
+body.site-brand-clipphotvn .mosaic__main:focus-visible .mosaic__main-media img {
+    transform: scale(1.03);
+}
+
+body.site-brand-clipphotvn .mosaic__main-scrim {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(0deg, var(--color-bg) 0%, rgba(139, 92, 246, 0.14) 45%, rgba(7, 6, 10, 0.02) 100%);
+}
+
+body.site-brand-clipphotvn .mosaic__main-duration {
+    position: absolute;
+    z-index: 2;
+    right: 14px;
+    top: 14px;
+    padding: 3px 9px;
+    background: var(--color-scrim);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    color: var(--color-text);
+    font-size: 0.75rem;
+    font-weight: 700;
+    border-radius: 999px;
+}
+
+body.site-brand-clipphotvn .mosaic__main-body {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-4);
+}
+
+body.site-brand-clipphotvn .mosaic__main-title {
+    font-size: clamp(1.1rem, 0.9rem + 1vw, 1.6rem);
+    font-weight: 800;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+body.site-brand-clipphotvn .mosaic__main-views {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+}
+
+body.site-brand-clipphotvn .mosaic__side {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: var(--space-3);
+}
+
+body.site-brand-clipphotvn .mosaic__side-item {
+    display: flex;
+    flex-direction: column;
+    color: var(--color-text);
+}
+
+body.site-brand-clipphotvn .mosaic__side-media {
+    position: relative;
+    display: block;
+    border-radius: 11px;
+    overflow: hidden;
+    background: var(--color-surface);
+    aspect-ratio: 16 / 9;
+    margin-bottom: var(--space-1);
+}
+
+body.site-brand-clipphotvn .mosaic__side-media img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--transition-base);
+}
+
+body.site-brand-clipphotvn .mosaic__side-item:hover .mosaic__side-media img,
+body.site-brand-clipphotvn .mosaic__side-item:focus-visible .mosaic__side-media img {
+    transform: scale(1.05);
+}
+
+body.site-brand-clipphotvn .mosaic__side-duration {
+    position: absolute;
+    right: 5px;
+    bottom: 5px;
+    padding: 1px 5px;
+    background: var(--color-scrim);
+    color: var(--color-text);
+    font-size: 0.65rem;
+    font-weight: 700;
+    border-radius: 4px;
+}
+
+body.site-brand-clipphotvn .mosaic__side-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+@media (max-width: 768px) {
+    body.site-brand-clipphotvn .mosaic {
+        grid-template-columns: 1fr;
+    }
+
+    body.site-brand-clipphotvn .mosaic__main {
+        min-height: 220px;
+    }
+
+    body.site-brand-clipphotvn .mosaic__side {
+        grid-template-columns: repeat(2, 1fr);
+        grid-template-rows: auto;
+    }
+}
+
+/* ==========================================================================
+   Empty-thumbnail fallback poster
+   ========================================================================== */
+
+body.site-brand-clipphotvn .video-card__thumb--empty {
+    background: linear-gradient(155deg, #221a30 0%, var(--color-bg) 70%);
+    position: relative;
+    overflow: hidden;
+}
+
+body.site-brand-clipphotvn .video-card__thumb--empty::before {
+    content: "";
+    position: absolute;
+    inset: -40%;
+    background: linear-gradient(115deg, transparent 40%, rgba(139, 92, 246, 0.16) 50%, transparent 60%);
+}
+
+body.site-brand-clipphotvn .video-card__thumb-placeholder {
+    color: rgba(217, 70, 239, 0.55);
+}
+
+body.site-brand-clipphotvn .video-card__thumb-mark {
+    color: var(--cpv-champagne);
+    opacity: 0.8;
+    letter-spacing: 0.04em;
+}
+
+/* ==========================================================================
+   Watch page -- a premium "stage" around the untouched player, related
+   videos left as the shared default vertical grid (deliberately
+   distinct from clipbanquat's horizontal sidebar cards).
+   ========================================================================== */
+
+body.site-brand-clipphotvn .video-player-wrap {
+    border-radius: 16px;
+    overflow: hidden;
+    background: #000;
+    box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.14), 0 20px 60px rgba(139, 92, 246, 0.1), 0 20px 50px rgba(0, 0, 0, 0.5);
+}
+
+body.site-brand-clipphotvn .video-single__title {
+    font-weight: 800;
+    letter-spacing: -0.015em;
+}
+
+body.site-brand-clipphotvn .video-single__meta-category {
+    color: var(--color-accent-hover);
+}
+
+body.site-brand-clipphotvn .video-actions__btn {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: var(--color-border);
+}
+
+body.site-brand-clipphotvn .video-actions__btn:hover {
+    border-color: var(--color-accent);
+}
+
+body.site-brand-clipphotvn .video-description,
+body.site-brand-clipphotvn .video-single__tags-block,
+body.site-brand-clipphotvn .watch-layout__comments {
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--color-border);
+}
+
+body.site-brand-clipphotvn .watch-layout__sidebar .section {
+    padding: var(--space-3);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 14px;
+}
+
+body.site-brand-clipphotvn .watch-layout__sidebar .video-card__thumb {
+    border-radius: 10px;
+}
+
+/* The sidebar's stacked cards render a narrow thumbnail (~90-100px);
+   the full "Clip Hot VN" placeholder mark clips at that width (learned
+   from site-clipbanquat.css's own equivalent horizontal-card fix) --
+   keep only the icon there. */
+body.site-brand-clipphotvn .watch-layout__sidebar .video-card__thumb-mark {
+    display: none;
+}
+
+/* ==========================================================================
+   Comments
+   ========================================================================== */
+
+body.site-brand-clipphotvn textarea:focus,
+body.site-brand-clipphotvn input:focus {
+    outline-color: var(--color-accent);
+}
+
+/* ==========================================================================
+   Footer
+   ========================================================================== */
+
+body.site-brand-clipphotvn .site-footer {
+    background: var(--color-surface);
+    position: relative;
+}
+
+body.site-brand-clipphotvn .site-footer::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, rgba(139, 92, 246, 0.5) 50%, transparent 100%);
+}
+
+body.site-brand-clipphotvn .site-footer__brand-link {
+    font-weight: 800;
+}
+
+body.site-brand-clipphotvn .site-footer__brand-link span {
+    color: var(--color-accent);
+}
+
+body.site-brand-clipphotvn .site-footer__heading {
+    color: var(--color-text-faint);
+}
+
+body.site-brand-clipphotvn .site-footer__list a:hover,
+body.site-brand-clipphotvn .site-footer__list a:focus-visible {
+    color: var(--color-accent-hover);
+}
+
+body.site-brand-clipphotvn .site-footer__social-link:hover,
+body.site-brand-clipphotvn .site-footer__social-link:focus-visible {
+    color: var(--color-accent);
+}
+
+/* ==========================================================================
+   Category tiles
+   ========================================================================== */
+
+body.site-brand-clipphotvn .category-tile {
+    border-radius: 10px;
+}
