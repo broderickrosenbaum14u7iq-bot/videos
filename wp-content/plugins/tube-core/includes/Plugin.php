@@ -65,6 +65,7 @@ use Tube_Core\Stream\WebhookController;
 use Tube_Core\Stream\WebhookSignatureVerifier;
 use Tube_Core\Support\RedisRateLimiter;
 use Tube_Core\Video\R2\R2MediaUrlNormalizer;
+use Tube_Core\Video\R2\R2Mp4DurationProber;
 use Tube_Core\Video\R2\R2PlaybackUrlSigner;
 use Tube_Core\Video\R2\R2VideoValidator;
 use Tube_Core\Video\Repositories\VideoMetadataRepository;
@@ -183,6 +184,13 @@ final class Plugin
      * @var R2PlaybackUrlSigner|null
      */
     private ?R2PlaybackUrlSigner $r2_playback_url_signer = null;
+
+    /**
+     * Lazily created by self::r2_mp4_duration_prober().
+     *
+     * @var R2Mp4DurationProber|null
+     */
+    private ?R2Mp4DurationProber $r2_mp4_duration_prober = null;
 
     /**
      * Lazily created by self::video_statistics_repository().
@@ -594,6 +602,24 @@ final class Plugin
         }
 
         return $this->r2_video_validator;
+    }
+
+    /**
+     * The bounded-Range-read MP4 duration prober — R2's automatic
+     * duration mechanism, called synchronously at save time right after
+     * {@see self::r2_video_validator()} confirms the object is
+     * reachable, so a newly-published R2 video gets a real duration
+     * with no manual admin entry and no cron/async step required (there
+     * is no encoding pipeline to poll later for this source, same
+     * reasoning as {@see self::r2_video_validator()}'s own docblock).
+     */
+    public function r2_mp4_duration_prober(): R2Mp4DurationProber
+    {
+        if (null === $this->r2_mp4_duration_prober) {
+            $this->r2_mp4_duration_prober = new R2Mp4DurationProber();
+        }
+
+        return $this->r2_mp4_duration_prober;
     }
 
     /**

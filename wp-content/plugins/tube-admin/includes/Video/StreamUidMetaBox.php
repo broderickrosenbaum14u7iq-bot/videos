@@ -61,12 +61,17 @@ use WP_Post;
  * encoding pipeline for a direct file to sit in), which is specifically
  * what keeps a newly-saved R2 video from ever showing the Stream-only
  * "Video đang được xử lý" processing message. Duration for this source
- * has no reliable zero-bandwidth automatic mechanism (a HEAD request
- * never carries it, and probing the actual bytes to read it would mean
- * downloading a potentially multi-gigabyte file) — an administrator-
- * entered duration field is the chosen mechanism (simplest, always
- * reliable, zero bandwidth cost), optional so publishing is never
- * blocked on it, written through the exact same canonical
+ * is obtained automatically wherever possible: once `$object_key` is
+ * confirmed reachable, and only when no duration is already known for
+ * this video, {@see self::save_r2()} probes it with
+ * `Tube_Core\Video\R2\R2Mp4DurationProber` — a couple of small, bounded
+ * HTTP Range reads of the MP4 container's `moov`/`mvhd` box, never a
+ * full download. An administrator-entered duration field still exists
+ * and always takes priority over the probe when filled in (a manual
+ * escape hatch for the rare file the probe can't parse), but publishing
+ * is never blocked on either one — a probe failure simply leaves
+ * duration unset, exactly as an empty manual field always has. Whichever
+ * value is used is written through the exact same canonical
  * `duration_seconds` column/`StreamStatusUpdater` write path Stream's own
  * duration already uses, per this feature's own "one canonical duration
  * field for both sources" requirement.
@@ -378,7 +383,7 @@ final class StreamUidMetaBox
         <p class="description">
             <?php
             esc_html_e(
-                'Optional, but shown anywhere a duration normally is (cards, watch page, search) once set. R2 has no automatic way to read this without downloading the file.', // phpcs:ignore Generic.Files.LineLength.TooLong -- a single translatable string literal (WordPress.WP.I18n.NonSingularStringLiteralText forbids splitting it via concatenation).
+                'Optional -- left blank, this is detected automatically on save. Only fill this in if automatic detection fails for a particular file.', // phpcs:ignore Generic.Files.LineLength.TooLong -- a single translatable string literal (WordPress.WP.I18n.NonSingularStringLiteralText forbids splitting it via concatenation).
                 'tube-admin'
             );
             ?>
@@ -710,6 +715,17 @@ final class StreamUidMetaBox
         // phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce already verified by self::save().
         $duration_raw     = sanitize_text_field(wp_unslash(Request::string($_POST, self::R2_DURATION_FIELD_NAME)));
         $duration_seconds = is_numeric($duration_raw) && (int) $duration_raw >= 0 ? (int) $duration_raw : null;
+
+        // An explicit admin-entered value always wins outright (never
+        // overridden by a probe result). Otherwise, only probe when no
+        // duration is known yet for this video -- an R2 video that
+        // already has a real stored duration (from a prior probe, or a
+        // prior manual entry) doesn't need another live network round
+        // trip on every subsequent unrelated edit-and-save.
+        if (null === $duration_seconds && (null === $current || null === $current->duration_seconds)) {
+            $probe_url        = $tube_core->r2_playback_url_signer()->sign_url($object_key);
+            $duration_seconds = $tube_core->r2_mp4_duration_prober()->probe($probe_url);
+        }
 
         // Reachability of $object_key is already proven by
         // self::resolve_reachable_object_key() above -- no second HEAD
