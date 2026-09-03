@@ -54,6 +54,17 @@ define('TUBE_PLAYER_SIGNED_URL_TTL_SECONDS', 3600);
 // -- Optional: Cloudflare Images (actor/studio photos) -------------------
 define('TUBE_PLAYER_CLOUDFLARE_IMAGES_ACCOUNT_HASH', '');
 
+// -- Optional: site visual brand ------------------------------------------
+// Selects this site's assets/css/site-{brand}.css and the matching
+// body.site-brand-{brand} class -- omit entirely (or leave undefined) for
+// the shared default brand. Never set the same non-default brand on two
+// different sites; each of the brands below is that one site's own
+// distinct identity, not a reusable theme. Known values as of this
+// release: 'dongtoico', 'clipbanquat', 'clipphotvn'. A brand-new site
+// needing its own identity gets a new value here plus a new
+// assets/css/site-{brand}.css -- see docs/DEPLOY_NEW_SITE.md.
+// define('TUBE_THEME_SITE_BRAND', '');
+
 // -- Standard WordPress production hardening -----------------------------
 define('DISABLE_WP_CRON', true);
 define('WP_DEBUG', false);
