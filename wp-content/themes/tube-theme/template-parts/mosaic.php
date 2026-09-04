@@ -16,6 +16,13 @@
  * Renders nothing if fewer than 2 videos are available — a 1-item
  * "mosaic" is just a lone card, and there is no meaningful 2x2 to show.
  *
+ * `$args['heading']` (optional string) overrides the section title —
+ * added when cliptranhlinh's own "Có Thể Bạn Thích" call site reused
+ * this same generic template-part rather than forking it just to
+ * change one string; omitted entirely, it defaults to clipphotvn's
+ * original "Dành Cho Bạn", so that brand's own call site (which never
+ * passes this key) is completely unaffected.
+ *
  * @package Tube_Theme
  */
 
@@ -42,22 +49,30 @@ $tube_theme_mosaic_side = array_slice($tube_theme_mosaic_videos, 1, 4);
 $tube_theme_mosaic_main_permalink = get_permalink($tube_theme_mosaic_main->video_id);
 $tube_theme_mosaic_main_permalink = false === $tube_theme_mosaic_main_permalink ? '' : $tube_theme_mosaic_main_permalink;
 $tube_theme_mosaic_main_duration  = tube_theme_format_duration($tube_theme_mosaic_main->duration_seconds);
+
+$tube_theme_mosaic_heading = isset($args['heading']) && is_string($args['heading']) && '' !== $args['heading']
+    ? $args['heading']
+    : __('Dành Cho Bạn', 'tube-theme');
 ?>
 <div class="section section--mosaic">
     <div class="section-heading-row">
-        <h2 class="section-heading"><?php esc_html_e('Dành Cho Bạn', 'tube-theme'); ?></h2>
+        <h2 class="section-heading"><?php echo esc_html($tube_theme_mosaic_heading); ?></h2>
     </div>
     <div class="mosaic">
         <a class="mosaic__main" href="<?php echo esc_url($tube_theme_mosaic_main_permalink); ?>">
             <span class="mosaic__main-media">
                 <?php
                 // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- already escapes every interpolated value (esc_url()/esc_attr()), verified in Phase 6.
-                echo tube_player_get_image_html(
+                $tube_theme_mosaic_main_poster_html = tube_player_get_image_html(
                     $tube_theme_mosaic_main->video_id,
                     'hero',
                     ['alt' => $tube_theme_mosaic_main->title]
                 );
+                echo $tube_theme_mosaic_main_poster_html;
                 ?>
+                <?php if ('' === $tube_theme_mosaic_main_poster_html) : ?>
+                    <?php echo tube_theme_media_placeholder_html(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- self-generated markup, escapes its own interpolated brand text internally. ?>
+                <?php endif; ?>
             </span>
             <span class="mosaic__main-scrim"></span>
             <?php if ('' !== $tube_theme_mosaic_main_duration) : ?>
@@ -88,12 +103,16 @@ $tube_theme_mosaic_main_duration  = tube_theme_format_duration($tube_theme_mosai
                         <span class="mosaic__side-media">
                             <?php
                             // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- already escapes every interpolated value (esc_url()/esc_attr()), verified in Phase 6.
-                            echo tube_player_get_image_html(
+                            $tube_theme_mosaic_item_poster_html = tube_player_get_image_html(
                                 $tube_theme_mosaic_item->video_id,
                                 'grid_card',
                                 ['alt' => $tube_theme_mosaic_item->title]
                             );
+                            echo $tube_theme_mosaic_item_poster_html;
                             ?>
+                            <?php if ('' === $tube_theme_mosaic_item_poster_html) : ?>
+                                <?php echo tube_theme_media_placeholder_html(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- self-generated markup, escapes its own interpolated brand text internally. ?>
+                            <?php endif; ?>
                             <?php if ('' !== $tube_theme_mosaic_item_duration) : ?>
                                 <span class="mosaic__side-duration"><?php echo esc_html($tube_theme_mosaic_item_duration); ?></span>
                             <?php endif; ?>

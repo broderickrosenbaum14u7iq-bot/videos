@@ -216,6 +216,26 @@ if ('clipphotvn' === tube_theme_site_brand()) {
     </div>
 <?php endif; ?>
 
+<?php
+// cliptranhlinh's own "Có Thể Bạn Thích" section -- reuses the same
+// generic mosaic.php clipphotvn's homepage already calls (see that call
+// site above), just with its own heading text and, via
+// site-cliptranhlinh.css, its own entirely different layout treatment.
+// Placed after Most Viewed (not before Recently Added, unlike
+// clipphotvn's placement) to match this brand's own requested section
+// order: Mới Cập Nhật, Được Xem Nhiều, Có Thể Bạn Thích.
+if ('cliptranhlinh' === tube_theme_site_brand()) {
+    get_template_part(
+        'template-parts/mosaic',
+        null,
+        [
+            'videos'  => $tube_theme_most_viewed,
+            'heading' => __('Có Thể Bạn Thích', 'tube-theme'),
+        ]
+    );
+}
+?>
+
 <?php if (!$tube_theme_has_any_content) : ?>
     <div class="empty-state">
         <svg viewBox="0 0 24 24" aria-hidden="true">

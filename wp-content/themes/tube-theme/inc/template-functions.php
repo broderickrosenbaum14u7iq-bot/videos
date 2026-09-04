@@ -83,11 +83,55 @@ function tube_theme_site_brand(): string
 function tube_theme_placeholder_brand_text(): string
 {
     return match (tube_theme_site_brand()) {
-        'dongtoico'   => 'Đồng Tối Cổ',
-        'clipbanquat' => 'Clip Bán Quạt',
-        'clipphotvn'  => 'Clip Hot VN',
-        default       => 'Phim Tối Cổ',
+        'dongtoico'     => 'Đồng Tối Cổ',
+        'clipbanquat'   => 'Clip Bán Quạt',
+        'clipphotvn'    => 'Clip Hot VN',
+        'cliptranhlinh' => 'Clip Tranh Linh',
+        default         => 'Phim Tối Cổ',
     };
+}
+
+/**
+ * The same empty-poster placeholder mark `template-parts/video-card.php`
+ * already renders (icon + `tube_theme_placeholder_brand_text()`), as a
+ * reusable snippet for every other `position: relative`/`absolute`
+ * poster container that can equally have no WordPress poster set --
+ * `template-parts/hero.php`'s `.hero__media` (every brand's featured
+ * slot) and `template-parts/mosaic.php`'s `.mosaic__main-media`/
+ * `.mosaic__side-media`. Found missing during cliptranhlinh's own
+ * design pass (a poster-less test video rendered as a bare block with
+ * no icon/mark at all in both places) but the gap itself pre-dates that
+ * brand -- every brand's hero was equally affected, this fixes it
+ * everywhere at once, not just for cliptranhlinh.
+ *
+ * Deliberately reuses the exact `video-card__thumb-placeholder`/
+ * `video-card__thumb-mark` class names rather than inventing new ones:
+ * every brand's existing per-class CSS override (`site-{brand}.css`)
+ * therefore already applies here for free, and the shared base rule
+ * (`tube-theme.css`) needs no new selector either -- both class names
+ * are already `position: absolute; inset: 0`-safe, so they work
+ * correctly inside any equally-positioned parent, not just
+ * `.video-card__thumb`.
+ *
+ * Callers are expected to check `'' === tube_player_get_image_html(...)`
+ * themselves first (the same test `video-card.php` already does) and
+ * call this only in that branch -- kept a plain string-return helper,
+ * not a self-contained "render the poster or this" wrapper, so each
+ * call site's own real poster call (already correct, already tested)
+ * never needs to change shape.
+ */
+function tube_theme_media_placeholder_html(): string
+{
+    ob_start();
+    ?>
+    <span class="video-card__thumb-placeholder" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z" fill="none" stroke="currentColor" stroke-width="1.5" />
+            <path d="M10 9l6 3-6 3z" /></svg>
+        <span class="video-card__thumb-mark"><?php echo esc_html(tube_theme_placeholder_brand_text()); ?></span>
+    </span>
+    <?php
+
+    return (string) ob_get_clean();
 }
 
 /**
@@ -116,6 +160,11 @@ function tube_theme_primary_chip_labels(): array
             'new'      => __('Mới Nhất', 'tube-theme'),
             'trending' => __('Thịnh Hành', 'tube-theme'),
             'popular'  => __('Xem Nhiều', 'tube-theme'),
+        ],
+        'cliptranhlinh' => [
+            'new'      => __('Mới Cập Nhật', 'tube-theme'),
+            'trending' => __('Nổi Bật', 'tube-theme'),
+            'popular'  => __('Được Xem Nhiều', 'tube-theme'),
         ],
         default => [
             'new'      => __('Video Mới', 'tube-theme'),
