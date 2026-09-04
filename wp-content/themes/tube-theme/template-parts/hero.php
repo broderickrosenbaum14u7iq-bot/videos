@@ -376,6 +376,7 @@ if ('clipphotvn' === tube_theme_site_brand()) {
                     'alt'           => $tube_theme_video->title,
                 ]
             );
+            echo $tube_theme_hero_poster_html;
             ?>
             <?php if ('' === $tube_theme_hero_poster_html) : ?>
                 <?php echo tube_theme_media_placeholder_html(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- self-generated markup, escapes its own interpolated brand text internally. ?>
@@ -451,6 +452,7 @@ if ('clipphotvn' === tube_theme_site_brand()) {
                 'alt'           => $tube_theme_video->title,
             ]
         );
+        echo $tube_theme_hero_poster_html;
         ?>
         <?php if ('' === $tube_theme_hero_poster_html) : ?>
             <?php echo tube_theme_media_placeholder_html(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- self-generated markup, escapes its own interpolated brand text internally. ?>
