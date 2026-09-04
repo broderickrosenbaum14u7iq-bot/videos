@@ -123,10 +123,15 @@ final class CachePurgeSubscriberTest extends TestCase
     }
 
     /**
-     * The stats-rolled-up handler purges only "Trending"/"Most Viewed" —
-     * never an individual video's own cache entry, per ARCHITECTURE.md §16.1.
+     * The stats-rolled-up handler purges "Trending"/"Most Viewed"/
+     * "Recently Added" — never an individual video's own cache entry —
+     * per ARCHITECTURE.md §16.1. "Recently Added" joined the other two
+     * here after a real fresh-deployment symptom: unlike Trending/Most-
+     * Viewed, it previously only self-healed on its own 900s TTL or a
+     * fresh publish, so a just-published video's stale `views_total: 0`
+     * snapshot could show on the homepage for up to 15 minutes.
      */
-    public function test_handle_video_stats_rolled_up_purges_only_trending_and_most_viewed(): void
+    public function test_handle_video_stats_rolled_up_purges_trending_most_viewed_and_recently_added(): void
     {
         $this->subscriber->handle_video_stats_rolled_up(
             [
@@ -135,7 +140,10 @@ final class CachePurgeSubscriberTest extends TestCase
             ]
         );
 
-        self::assertSame([CacheKeys::trending(), CacheKeys::most_viewed()], $this->cache->deleted);
+        self::assertSame(
+            [CacheKeys::trending(), CacheKeys::most_viewed(), CacheKeys::recently_added()],
+            $this->cache->deleted
+        );
     }
 
     /**

@@ -159,16 +159,31 @@ final class CachePurgeSubscriber
     /**
      * `tube_core.video.stats_rolled_up` handler — fired once per video,
      * every rollup cycle (`Tube_Core\Views\StatsRollup`, every 5 minutes).
-     * Per ARCHITECTURE.md §16.1's exact row for this event: purge
-     * "Trending"/"Most Viewed" listing keys **only**, never an individual
-     * video's own cache entry. Deliberately ignores `$payload` — these
-     * two keys are purged regardless of which video the rollup is
-     * currently reporting on. Purging the same two fixed keys redundantly
-     * once per video in a rollup cycle is a deliberately accepted,
-     * harmless cost (an idempotent Redis `DEL` on an already-purged key),
-     * not a bug — see PHASE-7.md for why building a debounce mechanism
-     * for this would be exactly the unjustified complexity this
-     * project's "avoid enterprise patterns" instruction rules out.
+     * Purges "Trending"/"Most Viewed"/"Recently Added" listing keys —
+     * never an individual video's own cache entry. Deliberately ignores
+     * `$payload`: these three keys are purged regardless of which video
+     * the rollup is currently reporting on. Purging the same fixed keys
+     * redundantly once per video in a rollup cycle is a deliberately
+     * accepted, harmless cost (an idempotent Redis `DEL` on an
+     * already-purged key), not a bug — see PHASE-7.md for why building a
+     * debounce mechanism for this would be exactly the unjustified
+     * complexity this project's "avoid enterprise patterns" instruction
+     * rules out.
+     *
+     * "Recently Added" was added to this purge set after a real fresh-
+     * deployment symptom: its own cache entry is otherwise only purged on
+     * `video.published`/`.updated`/`.deleted` (ARCHITECTURE.md §16.1)
+     * plus its 900s TTL as a backstop, unlike Trending/Most-Viewed which
+     * already self-heal every rollup cycle. Because a just-published
+     * video's `views_total` in the search index can still read 0 at the
+     * exact moment "Recently Added" first gets cached (before
+     * `ViewBaselineSubscriber`'s baseline and/or the first real
+     * `views:flush`/`stats:rollup` cycle land), that stale zero could
+     * otherwise persist for the entire TTL — up to 15 minutes of every
+     * visitor seeing "0 lượt xem" on a card whose real count is already
+     * in the thousands. Folding it into this same reactive purge closes
+     * that gap the same way it's already closed for the other two
+     * views_total-bearing homepage listings.
      *
      * @param array<string, mixed> $payload Carries `video_id`/`views_total` per EVENTS.md — unused here (see above).
      */
@@ -177,6 +192,7 @@ final class CachePurgeSubscriber
     {
         $this->cache->delete(CacheKeys::trending());
         $this->cache->delete(CacheKeys::most_viewed());
+        $this->cache->delete(CacheKeys::recently_added());
     }
 
     /**

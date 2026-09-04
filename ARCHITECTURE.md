@@ -399,7 +399,7 @@ Four layers exist in this architecture, and invalidation is handled differently 
 | `video.updated` (taxonomy/actor/studio changed) | Purge video detail key; purge **old and new** affected listing keys | Purge `/watch/{slug}/`; purge page 1 of old and new affected archives | Purge by URL: video URL + old/new page-1 archive URLs | Update row |
 | `video.deleted` | Purge video detail key; purge affected listing keys | Purge `/watch/{slug}/` (now serves 410); purge page 1 of archives it was in | Purge by URL: same set | Delete row |
 | `video.stream.status_changed` → `ready` | Purge video detail key | Purge `/watch/{slug}/` | Purge by URL: video URL | Update `duration_seconds` |
-| `video.stats.rolled_up` (every 5 min, §7) | Purge "trending"/"most viewed" listing keys **only** — not every individual video's own cache entry | Purge homepage Trending/Most-Viewed fragments only | Purge by URL: homepage + trending/most-viewed archive URLs only | Update `views_total` (batched) |
+| `video.stats.rolled_up` (every 5 min, §7) | Purge "trending"/"most viewed"/"recently added" listing keys **only** — not every individual video's own cache entry | Purge homepage Trending/Most-Viewed/Recently-Added fragments only | Purge by URL: homepage + trending/most-viewed/recently-added archive URLs only | Update `views_total` (batched) |
 | Actor/studio profile edited (bio, photo) | Purge that actor/studio's detail key | Purge `/actor/{slug}/` or `/studio/{slug}/` profile fragment | Purge by URL: that profile URL | No change (index doesn't store bio) |
 | `*.slug_changed` | Purge old + new detail keys | Purge old + new fragments | Purge by URL: old (now a redirect) + new | Update denormalized slug fields if index stores them |
 
@@ -407,7 +407,7 @@ Four layers exist in this architecture, and invalidation is handled differently 
 
 Archive pages beyond page 1 are **never** proactively purged — at 500,000+ videos, a single taxonomy edit could otherwise imply purging hundreds of deep pages. Deep pages are left to expire on a bounded TTL (recommended: 10–15 minutes at the edge) instead. This is an explicit scale tradeoff: page 1 (what nearly all users and crawlers actually hit) stays fresh instantly; deep pages are eventually consistent within one TTL window.
 
-Because `video.stats.rolled_up` fires on a fixed 5-minute cron cadence (§7) rather than per individual view, trending/most-viewed data — and its cache purge frequency — is naturally bounded to once per rollup cycle. Trending is eventually consistent with a ~5-minute lag by design, which is the same tradeoff the write-path scalability in §2.2 already commits to; the cache policy here is just the read-side expression of that same decision.
+Because `video.stats.rolled_up` fires on a fixed 5-minute cron cadence (§7) rather than per individual view, trending/most-viewed/recently-added data — and its cache purge frequency — is naturally bounded to once per rollup cycle. Trending is eventually consistent with a ~5-minute lag by design, which is the same tradeoff the write-path scalability in §2.2 already commits to; the cache policy here is just the read-side expression of that same decision. Recently Added joined this same reactive purge (not just its own 900s TTL) because its cards also display `views_total`, and a just-published video's index row can still read 0 at the exact moment that listing is first cached — without the rollup purge, that stale zero would otherwise be visible for a full TTL window instead of the same ~5-minute bound trending/most-viewed already get.
 
 ---
 
