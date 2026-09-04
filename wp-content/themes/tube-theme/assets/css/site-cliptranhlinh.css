@@ -452,15 +452,37 @@ body.site-brand-cliptranhlinh .hero__side-views {
 }
 
 @media (min-width: 900px) {
+    /* `grid-template-rows` here is load-bearing, not decorative: every
+       child of `.hero__featured` that actually shows the poster
+       (`.hero__media`, `.hero__scrim`, `.hero__content`) is
+       `position: absolute` and so contributes zero intrinsic height to
+       an `auto` grid row -- and this list's own rows deliberately have
+       no thumbnail (`.hero__side-thumb` is `display: none`, this
+       brand's own "editorial index, not a card grid" identity), so
+       nothing in either column has real intrinsic height to size an
+       `auto` row from. Without an explicit row height, the row (and so
+       the whole hero, `.hero__featured` included via its own
+       `min-height: 100%` right below) collapsed to just the text
+       list's own short content height (~229px observed live) --
+       leaving only a sliver of the poster image visible instead of a
+       real hero. A fixed row height removes the guesswork entirely.
+       Sibling brands' own side rails happen to avoid this because their
+       thumbnails carry a real `aspect-ratio`, which *does* count as
+       intrinsic height -- not something to rely on here on purpose. */
     body.site-brand-cliptranhlinh .hero--has-side {
         display: grid;
         grid-template-columns: 3fr 1fr;
+        grid-template-rows: clamp(200px, 38vw, 400px);
         align-items: stretch;
         gap: var(--space-4);
     }
 
     body.site-brand-cliptranhlinh .hero--has-side .hero__featured {
         min-height: 100%;
+    }
+
+    body.site-brand-cliptranhlinh .hero--has-side .hero__side {
+        overflow-y: auto;
     }
 }
 
